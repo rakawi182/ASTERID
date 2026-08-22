@@ -1,0 +1,44 @@
+$$
+$$ OTL provider: http://holt.oso.chalmers.se/loading/
+$$ Created by Scherneck & Bos (provided by TeroMovigo)
+$$
+$$ COLUMN ORDER:  M2  S2  N2  K2  K1  O1  P1  Q1  MF  MM SSA
+$$
+$$ ROW ORDER:
+$$ AMPLITUDES (nm/s^2 / nrad)
+$$   RADIAL
+$$   TILT EW
+$$   TILT NS
+$$ PHASES (degrees)
+$$   RADIAL
+$$   TILT EW
+$$   TILT NS
+$$
+$$ Gravity/tilt is defined positive in upward, North and East direction.
+$$ The phase lag is relative to Greenwich and lags positive. The PREM
+$$ Green's function is used. The deficit of tidal water mass in the tide
+$$ model has been corrected by subtracting a uniform layer of water with
+$$ a certain phase lag globally.
+$$
+$$ CMC:  NO (corr.tide centre of mass)
+$$
+$$ A constant seawater density of 1030 kg/m^3 is used.
+$$
+$$ A thin tidal layer is subtracted to conserve water mass.
+$$
+$$ FES2014b: m2 s2 n2 k2 k1 o1
+$$ FES2014b: p1 q1 Mf Mm Ssa
+$$
+$$ END HEADER
+$$
+  JOLOTUNDO OBSV
+$$ FES2014b ID:2026-06-29 15:07:10
+$$ Computed using CARGA
+$$ JOLOTUNDO OBSV          GRAV TILT  lon/lat: 112.5956   -7.6094   561.002
+   29.58  14.88   6.03   4.03  35.26  23.72  10.76   4.96   2.47   1.52   1.24
+   33.58  15.02   7.28   3.64  25.31  15.80   7.55   3.45   0.40   0.20   0.25
+   54.66  26.74  10.67   7.36  23.37   5.56   6.96   0.58   0.29   0.20   0.08
+  -150.7  -85.3  179.1  -91.4   -0.9  -23.9   -2.9  -35.2 -168.0 -172.1  178.1
+   117.8  132.0  103.9  128.5 -172.6  163.7 -173.9  160.0   21.2   12.6    6.0
+  -142.1  -83.9 -171.9  -83.1 -113.6  154.4 -114.3   53.1  132.0   19.1  -53.4
+$$ END TABLE
