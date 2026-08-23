@@ -1,0 +1,352 @@
+Memuat seri VSOP2013 dan ELP/MPP02...
+All series loaded successfully.
+Selesai.
+
+======================================================================
+ VALIDASI VSOP2013 + ELP/MPP02 vs DE441 (JPL Horizons)
+ Kerangka: Ecliptic J2000.0 (Heliosentrik, TDB)
+ Jumlah epoch: 9 | Konstanta μ: 0.01215058
+======================================================================
+----------------------------------------------------------------------
+ EPOCH JD 581636.6
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km):  77113342.6908 -130840166.0037  -1676871.6009
+  VSOP2013 pos (km):  77115291.7984 -130838995.0620  -1676894.7462
+  Selisih  pos (km):      1949.1075      1170.9418       -23.1453
+  -> Norm err pos  :      2273.9087 km
+  -> Radial dist diff:       -18.8475 km
+  -> Longitude error   :         3.0880 arcsec
+  Horizons vel(km/d):   2169908.5144   1309385.8512     12273.8055
+  VSOP2013 vel(km/d):   2169888.8674   1309419.0280     12274.2073
+  Selisih  vel(km/d):       -19.6470        33.1768         0.4019
+  -> Norm err vel   :   3.855991e+01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km):  77109373.6973 -130842968.6311  -1676936.8382
+  VSOP+ELP pos (km):  77111328.0538 -130841805.5616  -1676958.8116
+  Selisih  pos (km):      1954.3565      1163.0695       -21.9734
+  -> Norm err pos  :      2274.3621 km
+  -> Radial dist diff:        -9.4864 km
+  -> Longitude error   :         3.0887 arcsec
+  Horizons vel(km/d):   2170462.4981   1308525.2345     12352.4797
+  VSOP+ELP vel(km/d):   2170444.5697   1308559.5854     12352.9222
+  Selisih  vel(km/d):       -17.9285        34.3509         0.4424
+  -> Norm err vel   :   3.875063e+01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :        -9.4864 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        20.3044 km
+
+ Selisih norm (EMB - Earth): 0.453441 km
+----------------------------------------------------------------------
+ EPOCH JD 2101592.7
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km):  66671744.8929 131609456.1236    296280.5857
+  VSOP2013 pos (km):  66671649.2386 131609503.7161    296297.8694
+  Selisih  pos (km):       -95.6543        47.5925        17.2837
+  -> Norm err pos  :       108.2290 km
+  -> Radial dist diff:        -0.7367 km
+  -> Longitude error   :         0.1494 arcsec
+  Horizons vel(km/d):  -2339298.0559   1155583.0309      2281.7450
+  VSOP2013 vel(km/d):  -2339298.8974   1155581.3565      2282.1765
+  Selisih  vel(km/d):        -0.8415        -1.6743         0.4316
+  -> Norm err vel   :   1.922959e+00 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km):  66667282.4647 131609372.3358    295968.1207
+  VSOP+ELP pos (km):  66667186.8127 131609419.8870    295985.4016
+  Selisih  pos (km):       -95.6521        47.5512        17.2809
+  -> Norm err pos  :       108.2084 km
+  -> Radial dist diff:        -0.7698 km
+  -> Longitude error   :         0.1493 arcsec
+  Horizons vel(km/d):  -2339264.8531   1154467.2751      2219.2838
+  VSOP+ELP vel(km/d):  -2339265.6839   1154465.6006      2219.7161
+  Selisih  vel(km/d):        -0.8308        -1.6744         0.4323
+  -> Norm err vel   :   1.918539e+00 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :        -0.7698 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.1038 km
+
+ Selisih norm (EMB - Earth): 0.020610 km
+----------------------------------------------------------------------
+ EPOCH JD 2415021.0
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km): -30734371.3102 143843005.0069     32003.6752
+  VSOP2013 pos (km): -30734403.6726 143842998.0695     32032.3823
+  Selisih  pos (km):       -32.3624        -6.9374        28.7071
+  -> Norm err pos  :        43.8127 km
+  -> Radial dist diff:        -0.0159 km
+  -> Longitude error   :         0.0464 arcsec
+  Horizons vel(km/d):  -2559066.5317   -547182.8623      -176.9042
+  VSOP2013 vel(km/d):  -2559066.4093   -547183.4384      -176.7469
+  Selisih  vel(km/d):         0.1224        -0.5761         0.1574
+  -> Norm err vel   :   6.096556e-01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km): -30735221.4930 143847375.3638     31869.0646
+  VSOP+ELP pos (km): -30735253.8564 143847368.4262     31897.7727
+  Selisih  pos (km):       -32.3635        -6.9376        28.7081
+  -> Norm err pos  :        43.8142 km
+  -> Radial dist diff:        -0.0160 km
+  -> Longitude error   :         0.0464 arcsec
+  Horizons vel(km/d):  -2560162.3854   -547439.4240      -273.1715
+  VSOP+ELP vel(km/d):  -2560162.2630   -547440.0004      -273.0140
+  Selisih  vel(km/d):         0.1225        -0.5764         0.1574
+  -> Norm err vel   :   6.098993e-01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :        -0.0160 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.0077 km
+
+ Selisih norm (EMB - Earth): 0.001482 km
+----------------------------------------------------------------------
+ EPOCH JD 2433282.5
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km): -27331826.8493 144533362.7229     16482.9850
+  VSOP2013 pos (km): -27331859.5745 144533356.5288     16511.4742
+  Selisih  pos (km):       -32.7252        -6.1941        28.4892
+  -> Norm err pos  :        43.8285 km
+  -> Radial dist diff:        -0.0023 km
+  -> Longitude error   :         0.0467 arcsec
+  Horizons vel(km/d):  -2570970.8906   -487775.1846       -84.8206
+  VSOP2013 vel(km/d):  -2570970.7806   -487775.7670       -84.6510
+  Selisih  vel(km/d):         0.1099        -0.5824         0.1696
+  -> Norm err vel   :   6.164688e-01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km): -27334093.0751 144529080.6421     16162.2465
+  VSOP+ELP pos (km): -27334125.7994 144529074.4476     16190.7352
+  Selisih  pos (km):       -32.7243        -6.1945        28.4887
+  -> Norm err pos  :        43.8276 km
+  -> Radial dist diff:        -0.0023 km
+  -> Longitude error   :         0.0467 arcsec
+  Horizons vel(km/d):  -2570040.2741   -488221.9790      -141.7732
+  VSOP+ELP vel(km/d):  -2570040.1641   -488222.5612      -141.6038
+  Selisih  vel(km/d):         0.1100        -0.5822         0.1694
+  -> Norm err vel   :   6.162220e-01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :        -0.0023 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.0056 km
+
+ Selisih norm (EMB - Earth): 0.000956 km
+----------------------------------------------------------------------
+ EPOCH JD 2440587.5
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km): -27012098.9366 144599784.9253      9497.3152
+  VSOP2013 pos (km): -27012131.8804 144599778.7746      9525.7835
+  Selisih  pos (km):       -32.9438        -6.1508        28.4683
+  -> Norm err pos  :        43.9724 km
+  -> Radial dist diff:         0.0051 km
+  -> Longitude error   :         0.0470 arcsec
+  Horizons vel(km/d):  -2571898.5510   -482088.4912       -46.1534
+  VSOP2013 vel(km/d):  -2571898.4416   -482089.0773       -45.9826
+  Selisih  vel(km/d):         0.1095        -0.5861         0.1708
+  -> Norm err vel   :   6.202180e-01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km): -27007428.5793 144600702.1473      9687.5187
+  VSOP+ELP pos (km): -27007461.5233 144600695.9976      9715.9867
+  Selisih  pos (km):       -32.9441        -6.1497        28.4680
+  -> Norm err pos  :        43.9722 km
+  -> Radial dist diff:         0.0052 km
+  -> Longitude error   :         0.0470 arcsec
+  Horizons vel(km/d):  -2572166.2010   -481078.8339        34.2142
+  VSOP+ELP vel(km/d):  -2572166.0918   -481079.4201        34.3852
+  Selisih  vel(km/d):         0.1092        -0.5862         0.1710
+  -> Norm err vel   :   6.203175e-01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :         0.0052 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.0063 km
+
+ Selisih norm (EMB - Earth): 0.000162 km
+----------------------------------------------------------------------
+ EPOCH JD 2451545.0
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km): -26502576.8897 144693955.6280      -170.4332
+  VSOP2013 pos (km): -26502610.2435 144693949.5311      -141.9957
+  Selisih  pos (km):       -33.3538        -6.0969        28.4375
+  -> Norm err pos  :        44.2531 km
+  -> Radial dist diff:         0.0120 km
+  -> Longitude error   :         0.0475 arcsec
+  Horizons vel(km/d):  -2573548.4841   -473314.4775         3.6265
+  VSOP2013 vel(km/d):  -2573548.3752   -473315.0707         3.7993
+  Selisih  vel(km/d):         0.1088        -0.5932         0.1728
+  -> Norm err vel   :   6.273852e-01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km): -26499033.6774 144697296.7925      -611.1494
+  VSOP+ELP pos (km): -26499067.0320 144697290.6964      -582.7117
+  Selisih  pos (km):       -33.3546        -6.0962        28.4377
+  -> Norm err pos  :        44.2538 km
+  -> Radial dist diff:         0.0119 km
+  -> Longitude error   :         0.0475 arcsec
+  Horizons vel(km/d):  -2574224.0701   -472547.0828        15.7061
+  VSOP+ELP vel(km/d):  -2574223.9614   -472547.6762        15.8791
+  Selisih  vel(km/d):         0.1087        -0.5934         0.1730
+  -> Norm err vel   :   6.275561e-01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :         0.0119 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.0055 km
+
+ Selisih norm (EMB - Earth): 0.000645 km
+----------------------------------------------------------------------
+ EPOCH JD 2455197.5
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km): -26332875.4346 144728299.8842     -3218.7900
+  VSOP2013 pos (km): -26332908.9367 144728293.8042     -3190.3640
+  Selisih  pos (km):       -33.5021        -6.0800        28.4260
+  -> Norm err pos  :        44.3553 km
+  -> Radial dist diff:         0.0147 km
+  -> Longitude error   :         0.0477 arcsec
+  Horizons vel(km/d):  -2574007.0599   -470427.9256        18.3108
+  VSOP2013 vel(km/d):  -2574006.9513   -470428.5213        18.4842
+  Selisih  vel(km/d):         0.1086        -0.5957         0.1735
+  -> Norm err vel   :   6.298718e-01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km): -26331886.6634 144724047.1371     -3273.8879
+  VSOP+ELP pos (km): -26331920.1646 144724041.0573     -3245.4627
+  Selisih  pos (km):       -33.5013        -6.0798        28.4252
+  -> Norm err pos  :        44.3541 km
+  -> Radial dist diff:         0.0148 km
+  -> Longitude error   :         0.0477 arcsec
+  Horizons vel(km/d):  -2572895.2334   -470150.8481       123.6114
+  VSOP+ELP vel(km/d):  -2572895.1248   -470151.4436       123.7848
+  Selisih  vel(km/d):         0.1086        -0.5955         0.1734
+  -> Norm err vel   :   6.296564e-01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :         0.0148 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.0033 km
+
+ Selisih norm (EMB - Earth): 0.001209 km
+----------------------------------------------------------------------
+ EPOCH JD 2458849.5
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km): -24880230.5463 144977152.2542     -6590.2931
+  VSOP2013 pos (km): -24880264.2586 144977146.4907     -6561.9695
+  Selisih  pos (km):       -33.7123        -5.7636        28.3237
+  -> Norm err pos  :        44.4068 km
+  -> Radial dist diff:         0.0204 km
+  -> Longitude error   :         0.0480 arcsec
+  Horizons vel(km/d):  -2578685.6118   -445046.8278        26.8607
+  VSOP2013 vel(km/d):  -2578685.5084   -445047.4272        27.0392
+  Selisih  vel(km/d):         0.1033        -0.5994         0.1785
+  -> Norm err vel   :   6.339027e-01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km): -24884971.5299 144978347.1519     -6171.7096
+  VSOP+ELP pos (km): -24885005.2423 144978341.3874     -6143.3853
+  Selisih  pos (km):       -33.7124        -5.7646        28.3244
+  -> Norm err pos  :        44.4075 km
+  -> Radial dist diff:         0.0205 km
+  -> Longitude error   :         0.0480 arcsec
+  Horizons vel(km/d):  -2578946.7287   -446029.1745        63.6474
+  VSOP+ELP vel(km/d):  -2578946.6252   -446029.7739        63.8258
+  Selisih  vel(km/d):         0.1035        -0.5995         0.1784
+  -> Norm err vel   :   6.339302e-01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :         0.0205 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.0051 km
+
+ Selisih norm (EMB - Earth): 0.000684 km
+----------------------------------------------------------------------
+ EPOCH JD 2469807.5
+ [EARTH-MOON BARYCENTER]
+  Horizons pos (km): -25668445.8189 144850874.1644    -16178.8181
+  VSOP2013 pos (km): -25668479.9277 144850868.1530    -16150.4384
+  Selisih  pos (km):       -34.1088        -6.0114        28.3796
+  -> Norm err pos  :        44.7767 km
+  -> Radial dist diff:         0.0293 km
+  -> Longitude error   :         0.0486 arcsec
+  Horizons vel(km/d):  -2576057.3149   -458840.5087        78.5375
+  VSOP2013 vel(km/d):  -2576057.2069   -458841.1149        78.7135
+  Selisih  vel(km/d):         0.1080        -0.6062         0.1760
+  -> Norm err vel   :   6.404467e-01 km/d
+
+ [EARTH (GEOCENTRIC BODY)]
+  Horizons pos (km): -25672814.9333 144849457.7054    -16450.8363
+  VSOP+ELP pos (km): -25672849.0418 144849451.6934    -16422.4564
+  Selisih  pos (km):       -34.1085        -6.0119        28.3799
+  -> Norm err pos  :        44.7767 km
+  -> Radial dist diff:         0.0297 km
+  -> Longitude error   :         0.0486 arcsec
+  Horizons vel(km/d):  -2575779.9197   -459887.7483       149.3375
+  VSOP+ELP vel(km/d):  -2575779.8115   -459888.3545       149.5133
+  Selisih  vel(km/d):         0.1082        -0.6062         0.1758
+  -> Norm err vel   :   6.403895e-01 km/d
+
+ [GEOSENTRIC DISTANCES vs JPL]
+  -> Selisih jarak MATAHARI (Bumi-Matahari) :         0.0297 km
+  -> Selisih jarak BULAN   (Bumi-Bulan)     :        -0.0066 km
+
+ Selisih norm (EMB - Earth): 0.000054 km
+======================================================================
+ RINGKASAN STATISTIK (Error Posisi Cartesian / km)
+----------------------------------------------------------------------
+Epoch                EMB Norm       Earth Norm             Diff
+----------------------------------------------------------------------
+581636.6            2273.9087        2274.3621           0.4534
+2101592.7            108.2290         108.2084           0.0206
+2415021.0             43.8127          43.8142           0.0015
+2433282.5             43.8285          43.8276           0.0010
+2440587.5             43.9724          43.9722           0.0002
+2451545.0             44.2531          44.2538           0.0006
+2455197.5             44.3553          44.3541           0.0012
+2458849.5             44.4068          44.4075           0.0007
+2469807.5             44.7767          44.7767           0.0001
+----------------------------------------------------------------------
+Rata-rata            299.0604         299.1085           0.0532
+Std dev              698.4997         698.6428           0.1416
+======================================================================
+ RINGKASAN STATISTIK (Selisih Jarak Geosentrik / km)
+----------------------------------------------------------------------
+Epoch        Sun Dist (Earth)        Moon Dist             Diff
+----------------------------------------------------------------------
+581636.6              -9.4864          20.3044          29.7908
+2101592.7             -0.7698          -0.1038           0.6660
+2415021.0             -0.0160          -0.0077           0.0083
+2433282.5             -0.0023          -0.0056           0.0034
+2440587.5              0.0052          -0.0063           0.0115
+2451545.0              0.0119          -0.0055           0.0174
+2455197.5              0.0148          -0.0033           0.0181
+2458849.5              0.0205          -0.0051           0.0256
+2469807.5              0.0297          -0.0066           0.0363
+----------------------------------------------------------------------
+Rata-rata             -1.1325           2.2401           3.3975
+Std dev                2.9636           6.3868           9.3336
+======================================================================
+ RINGKASAN STATISTIK (Error Bujur / arcsecond)
+----------------------------------------------------------------------
+Epoch             EMB Lon Err    Earth Lon Err             Diff
+----------------------------------------------------------------------
+581636.6               3.0880           3.0887           0.0007
+2101592.7              0.1494           0.1493           0.0000
+2415021.0              0.0464           0.0464           0.0000
+2433282.5              0.0467           0.0467           0.0000
+2440587.5              0.0470           0.0470           0.0000
+2451545.0              0.0475           0.0475           0.0000
+2455197.5              0.0477           0.0477           0.0000
+2458849.5              0.0480           0.0480           0.0000
+2469807.5              0.0486           0.0486           0.0000
+----------------------------------------------------------------------
+Rata-rata              0.3966           0.3967           0.0001
+Std dev                0.9521           0.9523           0.0002
+======================================================================
+
+Catatan:
+ - VSOP2013 difit ke INPOP10a, ELP/MPP02 difit ke DE405 + koreksi sekuler.
+ - DE441 (Horizons) adalah ephemeris JPL terbaru (2021).
+ - Posisi Bulan JPL diturunkan dari data EMB dan Earth Horizons.
+ - Perbedaan jarak Matahari (Bumi-Matahari) mencerminkan kesalahan radial orbit Bumi.
+ - Perbedaan jarak Bulan (Bumi-Bulan) mencerminkan kesalahan radial orbit Bulan.
+ - Error bujur dihitung dari selisih sudut pada bidang XY (ekliptika) dalam arcsecond.
+ - Implementasi VSOP2013 dan ELP/MPP02 telah divalidasi internal dengan
+   akurasi sub-meter, sehingga perbedaan ini adalah fitur antar-ephemeris.
+
+[Program finished]
