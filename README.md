@@ -236,9 +236,8 @@ The Jolotundo Research Consortium (JRC) is an independent research collective fo
 
 👥 Author
 
-Rakawi
+Rakawi:
 Jolotundo Research Consortium
-rakawi@jolotundo.org
 
 ---
 
