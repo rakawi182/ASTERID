@@ -1,4 +1,4 @@
-ASTERID — Advanced Spatio‑Temporal Earth Rotation & Integrated Dynamics
+ASTERID
 
 https://img.shields.io/badge/License-Non--Commercial-red.svg
 https://img.shields.io/badge/Research-Only-blue.svg
@@ -40,7 +40,7 @@ Ephemerides (Sun, Moon)
 
 Module Description
 VSOP2013.py Full VSOP2013 analytical theory for the Sun (Earth‑Moon barycentre), validated against IMCCE reference.
-ELP82B.py / ELP_MPP02_full.py ELP 2000‑82B and ELP/MPP02 lunar ephemerides with DE405/LLR corrections.
+ELP_MPP02_full.py ELP/MPP02 lunar ephemerides with DE405/LLR corrections.
 SM_VSOP2013.py Orchestrator combining VSOP2013 (Sun) and ELP/MPP02 (Moon) with all IERS 2010 corrections.
 DT18_VSOP2013_Realtime.py Real‑time ephemeris and geodetic report generator.
 
@@ -71,7 +71,6 @@ ASTERID/
 ├── EOPDelta.py                  # IERS EOP (C04 + Bulletin‑A)
 ├── Coord_Transform.py           # Spherical, equatorial, ecliptic, horizontal, GCRS‑ITRS
 ├── VSOP2013.py                  # VSOP2013 Sun/EMB ephemeris
-├── ELP82B.py                    # ELP 2000‑82B lunar ephemeris
 ├── ELP_MPP02_full.py            # ELP/MPP02 lunar ephemeris
 ├── SM_VSOP2013.py               # Orchestrator: Sun + Moon with IERS corrections
 ├── DT18_VSOP2013_Realtime.py    # Real‑time ephemeris & geodetic report
@@ -90,7 +89,6 @@ ASTERID/
 │   ├── VSOP2013p3.dat                        # VSOP2013 full series
 │   ├── VSOP2013.ctl                          # VSOP2013 reference control file
 │   ├── VSOP87A_ear.txt                       # VSOP87A Earth series
-│   ├── ELP01.txt – ELP36.txt                 # ELP 2000‑82B series
 │   ├── ELP_MAIN_S1.txt – ELP_PERT.S3         # ELP/MPP02 series
 │   ├── LLIB04_DAT.txt                        # LLIB04 libration series
 │   ├── Ray_Ponte_2003_mbar.txt               # Atmospheric loading coefficients
@@ -265,5 +263,5 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 ---
 
 Last updated: 2026‑08‑24
-ASTERID — Advanced Spatio‑Temporal Earth Rotation & Integrated Dynamics
+ASTERID — 
 Jolotundo Research Consortium
