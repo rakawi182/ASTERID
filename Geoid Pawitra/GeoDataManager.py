@@ -1,5 +1,5 @@
 """
-GeoDataManager.py — Standalone Geospatial Data Manager for DEM & Geoid Grids
+GeoDataManager.py — Geospatial Data Manager for DEM & Geoid Grids
 =================================================================================
 
 **DESCRIPTION**
