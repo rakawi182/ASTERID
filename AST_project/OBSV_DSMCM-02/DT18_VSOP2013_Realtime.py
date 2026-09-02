@@ -40,7 +40,8 @@ sys.dont_write_bytecode = True
 import math
 import numpy as np
 from datetime import datetime, timezone
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
+import textwrap
 
 # -------------------------------------------------------------------------
 # CORE HIGH‑PRECISION MODULES (IAU SOFA / IERS 2010)
@@ -70,7 +71,7 @@ from EarthRotation import (
 # --- Ganti impor ---
 from SM_VSOP2013 import AstronomicalEphemeris
 from Atmospheric_refraction import SITE_LAT_DEG, SITE_LON_DEG, SITE_ELEV_M
-from Site_Geophysic import TectonicPlateKinematics
+from Site_Geophysic import TectonicPlateKinematics, EmbeddedGeodeticNetwork
 from Coord_Transform import cartesian_to_spherical, rot_x
 from LODEngine import HighPrecisionLODEngine
 
@@ -222,6 +223,7 @@ def generate_report(
     eop_file: str = "EOP_20u24_C04_one_file_1962-now.txt",
     plate_code: str = PLATE_CODE,
     vsop_file: str = "VSOP2013p3.dat",
+    ids_integrator: Optional[EmbeddedGeodeticNetwork] = None,    
 ) -> Dict:
     """
     Compute the full astrometric and geodetic report for the current UTC epoch
@@ -442,12 +444,11 @@ def generate_report(
     z_itrf = (N * (1.0 - (2 * f - f * f)) + height_m) * sin_lat
 
     plate_kin = TectonicPlateKinematics(plate_code)
+
+    # Kecepatan dengan ORB (tetap seperti sebelumnya)
     vx, vy, vz = plate_kin.get_velocity(
-        x_itrf,
-        y_itrf,
-        z_itrf,
-        lat_rad=lat_rad,
-        lon_rad=lon_rad,
+        x_itrf, y_itrf, z_itrf,
+        lat_rad=lat_rad, lon_rad=lon_rad,
         apply_orb=True,
         discard_vertical_orb=True,
     )
@@ -456,6 +457,58 @@ def generate_report(
     vu = (vx * cos_lat * cos_lon + vy * cos_lat * sin_lon + vz * sin_lat) * MM_PER_M
     horiz_speed = math.hypot(ve, vn)
     az_plate = math.degrees(math.atan2(ve, vn)) % 360.0
+
+    # Kecepatan tanpa ORB (baru)
+    vx_no, vy_no, vz_no = plate_kin.get_velocity(
+        x_itrf, y_itrf, z_itrf,
+        lat_rad=lat_rad, lon_rad=lon_rad,
+        apply_orb=False,
+        discard_vertical_orb=False,
+    )
+    ve_no = (-vx_no * sin_lon + vy_no * cos_lon) * MM_PER_M
+    vn_no = (-vx_no * sin_lat * cos_lon - vy_no * sin_lat * sin_lon + vz_no * cos_lat) * MM_PER_M
+    vu_no = (vx_no * cos_lat * cos_lon + vy_no * cos_lat * sin_lon + vz_no * sin_lat) * MM_PER_M
+    horiz_no = math.hypot(ve_no, vn_no)
+    az_no = math.degrees(math.atan2(ve_no, vn_no)) % 360.0
+
+    # Arah kompas (helper)
+    compass_points = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                      "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    compass_bearings = [0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5,
+                        180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5]
+    idx = min(range(len(compass_bearings)), key=lambda i: min(abs(az_plate - compass_bearings[i]), 360 - abs(az_plate - compass_bearings[i])))
+    dir_plate = compass_points[idx]
+    idx_no = min(range(len(compass_bearings)), key=lambda i: min(abs(az_no - compass_bearings[i]), 360 - abs(az_no - compass_bearings[i])))
+    dir_no = compass_points[idx_no]
+
+    # Data observasi (DORIS/IDS)
+    obs_ve = obs_vn = obs_vu = None
+    ref_point = "Jolotundo (ITRF2020 tide-free, VSOP2013)"   # default tetap
+    if ids_integrator is not None:
+        epoch_year = 2000.0 + (tt_jd - J2000_JD) / 365.25
+        nearest = ids_integrator.get_nearest_station(lat_deg, lon_deg, epoch_year)
+        if nearest is not None:
+            station_code = nearest['code']
+            station_data = ids_integrator.stations.get(station_code)
+            if station_data is not None:
+                v_obs_x = station_data.get('Vx', 0.0)
+                v_obs_y = station_data.get('Vy', 0.0)
+                v_obs_z = station_data.get('Vz', 0.0)
+                obs_ve = (-v_obs_x * sin_lon + v_obs_y * cos_lon) * MM_PER_M
+                obs_vn = (-v_obs_x * sin_lat * cos_lon - v_obs_y * sin_lat * sin_lon + v_obs_z * cos_lat) * MM_PER_M
+                obs_vu = (v_obs_x * cos_lat * cos_lon + v_obs_y * cos_lat * sin_lon + v_obs_z * sin_lat) * MM_PER_M
+
+    # Residu deformasi
+    if obs_ve is not None:
+        res_e = obs_ve - ve
+        res_n = obs_vn - vn
+        res_u = obs_vu - vu
+    else:
+        res_e = res_n = res_u = None
+
+    # ORB constants
+    orb_tx, orb_ty, orb_tz = TectonicPlateKinematics._ORB_MM_YR
+    
     epoch_diff_years = (tt_jd - J2000_JD) / 365.25
 
     # ---- 14. RETURN DATA ----
@@ -535,13 +588,30 @@ def generate_report(
         "lunar_omega_deg": math.degrees(omega_rad),
         "lunar_M_deg": math.degrees(M_rad),
         # Plate Motion
-        "plate_ve_mmyr": ve,
-        "plate_vn_mmyr": vn,
-        "plate_vu_mmyr": vu,
-        "plate_horiz_speed_mmyr": horiz_speed,
-        "plate_azimuth_deg": az_plate,
-        "plate_epoch_diff_years": epoch_diff_years,
+        "plate_reference_point": ref_point,
+        "plate_ve_orb_mmyr": ve,
+        "plate_vn_orb_mmyr": vn,
+        "plate_vu_orb_mmyr": vu,
+        "plate_ve_no_orb_mmyr": ve_no,
+        "plate_vn_no_orb_mmyr": vn_no,
+        "plate_vu_no_orb_mmyr": vu_no,
+        "plate_horiz_orb_mmyr": horiz_speed,
+        "plate_az_orb_deg": az_plate,
+        "plate_dir_orb": dir_plate,
+        "plate_horiz_no_orb_mmyr": horiz_no,
+        "plate_az_no_orb_deg": az_no,
+        "plate_dir_no_orb": dir_no,
+        "plate_orb_tx": orb_tx,
+        "plate_orb_ty": orb_ty,
+        "plate_orb_tz": orb_tz,
+        "plate_obs_ve": obs_ve,
+        "plate_obs_vn": obs_vn,
+        "plate_obs_vu": obs_vu,
+        "plate_res_e": res_e,
+        "plate_res_n": res_n,
+        "plate_res_u": res_u,
         "plate_code": plate_code,
+        "plate_epoch_diff_years": epoch_diff_years,
         # Metadata
         "eop_file": eop_file,
         "eop_last_date": eop_last_date,
@@ -726,13 +796,47 @@ def print_report(data: Dict) -> None:
 
     # [12] PLATE MOTION
     section_header("[12] KINEMATIC PLATE MOTION (ITRF2020‑PMM)")
-    print(f"  {'Tectonic Plate':<30}: {data['plate_code']} (Eurasian)")
-    print(f"  {'Reference Epoch':<30}: J2000.0 (ΔT = {data['plate_epoch_diff_years']:.4f} yr)")
-    print(f"  {'Velocity (Ve)':<30}: {data['plate_ve_mmyr']:.4f} mm/yr (East)")
-    print(f"  {'Velocity (Vn)':<30}: {data['plate_vn_mmyr']:.4f} mm/yr (North)")
-    print(f"  {'Velocity (Vu)':<30}: {data['plate_vu_mmyr']:.4f} mm/yr (Up)")
-    print(f"  {'Horizontal Speed':<30}: {data['plate_horiz_speed_mmyr']:.4f} mm/yr")
-    print(f"  {'Horizontal Azimuth':<30}: {data['plate_azimuth_deg']:.4f}° (True N)")
+    orb_tx = data.get('plate_orb_tx', 0.0)
+    orb_ty = data.get('plate_orb_ty', 0.0)
+    orb_tz = data.get('plate_orb_tz', 0.0)
+    print(f"  {'Plate Assignment':<30}: {data['plate_code']} Plate")
+    print(f"  {'Origin Rate Bias (ORB)':<30}: Tx={orb_tx:+.2f}, Ty={orb_ty:+.2f}, Tz={orb_tz:+.2f} mm/yr")
+
+    ref_point = data.get('plate_reference_point', 'Unknown')
+    prefix_ref = f"  {'Reference Point':<30}: "
+    wrapped_ref = textwrap.fill(
+        ref_point,
+        width=72,
+        initial_indent=prefix_ref,
+        subsequent_indent=" " * len(prefix_ref)
+    )
+    print(wrapped_ref)
+
+    # Dengan ORB
+    prefix_orb = f"  {'NNR Euler w/ ORB':<30}: "
+    print(f"{prefix_orb}Ve = {data['plate_ve_orb_mmyr']:+.2f} mm/yr")
+    indent_orb = " " * len(prefix_orb)
+    print(f"{indent_orb}Vn = {data['plate_vn_orb_mmyr']:+.2f} mm/yr")
+    print(f"{indent_orb}Vu = {data['plate_vu_orb_mmyr']:+.2f} mm/yr")
+
+    # Tanpa ORB
+    prefix_no = f"  {'NNR Euler w/o ORB':<30}: "
+    print(f"{prefix_no}Ve = {data['plate_ve_no_orb_mmyr']:+.2f} mm/yr")
+    indent_no = " " * len(prefix_no)
+    print(f"{indent_no}Vn = {data['plate_vn_no_orb_mmyr']:+.2f} mm/yr")
+    print(f"{indent_no}Vu = {data['plate_vu_no_orb_mmyr']:+.2f} mm/yr")
+
+    # Horizontal resultants
+    print(f"  {'Horiz. Resultant (ORB)':<30}: {data['plate_horiz_orb_mmyr']:.2f} mm/yr -> {data['plate_dir_orb']} (Az {data['plate_az_orb_deg']:.1f}°)")
+    print(f"  {'Horiz. Resultant (no ORB)':<30}: {data['plate_horiz_no_orb_mmyr']:.2f} mm/yr -> {data['plate_dir_no_orb']} (Az {data['plate_az_no_orb_deg']:.1f}°)")
+
+    # Deformasi lokal (jika ada)
+    if data.get('plate_obs_ve') is not None:
+        print(f"  {'Local Deformation (obs-model)':<30}: dVe={data['plate_res_e']:+.2f}, dVn={data['plate_res_n']:+.2f}, dVu={data['plate_res_u']:+.2f} mm/yr")
+    else:
+        print(f"  {'Local Deformation (obs-model)':<30}: No IDS velocity data available")
+
+    print(f"  {'Note':<30}: Vertical ORB discarded (Altamimi 2023)")
 
     # [13] OBSERVER NOTES
     section_header("[13] OBSERVER & REDUCTION NOTES")
@@ -778,7 +882,8 @@ def print_report(data: Dict) -> None:
 if __name__ == "__main__":
     print("⏳ Computing comprehensive ephemeris + plate kinematics (VSOP2013)...")
     try:
-        report = generate_report()
+        ids = EmbeddedGeodeticNetwork()
+        report = generate_report(ids_integrator=ids)
         print_report(report)
     except KeyboardInterrupt:
         print("\n⚠️  Interrupted.")
