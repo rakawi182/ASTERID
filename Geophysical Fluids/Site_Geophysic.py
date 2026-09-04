@@ -2121,11 +2121,23 @@ def generate_advanced_geodetic_report(lat, lon, h_ellipsoid_tide_free, density,
         except Exception as e:
             print(f"⚠️ StationDisplacement error: {e}")
 
-    # Gabungkan semua komponen displacement
-    de_total = de_m + de_res + disp_set[0]
-    dn_total = dn_m + dn_res + disp_set[1]
-    du_total = du_m + du_res + disp_set[2]
+    # ---- ROTASI XYZ → ENU ----
+    lat_rad = math.radians(lat)
+    lon_rad = math.radians(lon)
+    sin_lat = math.sin(lat_rad)
+    cos_lat = math.cos(lat_rad)
+    sin_lon = math.sin(lon_rad)
+    cos_lon = math.cos(lon_rad)
+
+    disp_e = -disp_set[0] * sin_lon + disp_set[1] * cos_lon
+    disp_n = -disp_set[0] * sin_lat * cos_lon - disp_set[1] * sin_lat * sin_lon + disp_set[2] * cos_lat
+    disp_u =  disp_set[0] * cos_lat * cos_lon + disp_set[1] * cos_lat * sin_lon + disp_set[2] * sin_lat
+
+    de_total = de_m + de_res + disp_e
+    dn_total = dn_m + dn_res + disp_n
+    du_total = du_m + du_res + disp_u
     de_total_mm, dn_total_mm, du_total_mm = de_total*1000, dn_total*1000, du_total*1000
+    disp_e_mm, disp_n_mm, disp_u_mm = disp_e*1000, disp_n*1000, disp_u*1000
 
     # =========================================================================
     # 5. GEOID & HEIGHT
@@ -2284,7 +2296,8 @@ def generate_advanced_geodetic_report(lat, lon, h_ellipsoid_tide_free, density,
     print(f"    Slant Delay (30° elev)       : {tropo['slant_delay_30deg_m']:.4f} m")
 
     print("\n[7] DISPLACEMENT COMPONENTS")
-    print(f"    StationDisplacement (de, dn, du) : {disp_set[0]*1000:8.4f}, {disp_set[1]*1000:8.4f}, {disp_set[2]*1000:8.4f} mm")
+    print("\n[7] DISPLACEMENT COMPONENTS (ENU)")
+    print(f"    StationDisplacement (de, dn, du) : {disp_e_mm:8.4f}, {disp_n_mm:8.4f}, {disp_u_mm:8.4f} mm")
     print(f"    Loading Resolver (de, dn, du)    : {de_res_mm:8.4f}, {dn_res_mm:8.4f}, {du_res_mm:8.4f} mm")
     print(f"    Total Loading (de, dn, du)       : {de_total_mm:8.4f}, {dn_total_mm:8.4f}, {du_total_mm:8.4f} mm")
 
