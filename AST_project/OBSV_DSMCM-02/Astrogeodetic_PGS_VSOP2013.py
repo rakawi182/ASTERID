@@ -325,11 +325,14 @@ def generate_advanced_geodetic_report_vsop2013(
     otl_grav_engine = Asterid342Engine_FES2014(JOLOTUNDO_FES2014_GRAV_BLQ)
     delta_t_sec = delta_t_from_jd(jd_tt)
 
+    # CRITICAL: include_equilibrium_long_period=False because Om1/Om2 (zonal, m=0)
+    # do NOT produce measurable gravity or tilt signals at the Earth's surface.
     dg_nm_s2, dtilt_ew_nrad, dtilt_ns_nrad = otl_grav_engine.compute_displacement(
         mjd_tt=jd_tt - 2400000.5,
-        delta_t=delta_t_sec
+        delta_t=delta_t_sec,
+        include_equilibrium_long_period=False  
     )
-
+    
     otl_gravity_correction_mgal = dg_nm_s2 / 10000.0
     RAD_TO_ARCSEC = 206264.80624709636
     otl_tilt_ew_arcsec = dtilt_ew_nrad * 1e-9 * RAD_TO_ARCSEC
@@ -430,6 +433,67 @@ def generate_advanced_geodetic_report_vsop2013(
         total_tide_mm = math.hypot(du_tide, math.hypot(de_tide, dn_tide))
     else:
         de_tide = dn_tide = du_tide = total_tide_mm = 0.0
+
+    # ======================================================================
+    # 4b. BREAKDOWN PER KOMPONEN DISPLACEMENT (untuk laporan terpisah)
+    # ======================================================================
+    # Inisialisasi default (nol)
+    de_otl = dn_otl = du_otl = 0.0
+    de_pt = dn_pt = du_pt = 0.0
+    de_opt = dn_opt = du_opt = 0.0
+    de_atm = dn_atm = du_atm = 0.0
+
+    if x_itrf2020_m is not None and sun_itrf is not None and moon_itrf is not None:
+        lat_r, lon_r = math.radians(lat), math.radians(lon)
+        sin_p, cos_p = math.sin(lat_r), math.cos(lat_r)
+        sin_l, cos_l = math.sin(lon_r), math.cos(lon_r)
+
+        # ---- Ocean Tide Loading (OTL) ----
+        otl_engine_disp = Asterid342Engine_FES2014(JOLOTUNDO_FES2014_BLQ)
+        dU_otl, dW_otl, dS_otl = otl_engine_disp.compute_displacement(
+            mjd_tt=jd_tt - 2400000.5,
+            delta_t=delta_t_sec,
+            include_equilibrium_long_period=True  # OTL displacement harus menyertakan Om1/Om2
+        )
+        # Konversi dari (Up, West, South) ke ENU
+        de_otl = -dW_otl * 1000.0
+        dn_otl = -dS_otl * 1000.0
+        du_otl = dU_otl * 1000.0
+
+        # ---- Pole Tide (rotational deformation) ----
+        xp_mean, yp_mean = mean_pole_iers2010(jd_tt)
+        dX_pt, dY_pt, dZ_pt = pole_tide(
+            xp_rad - xp_mean,
+            yp_rad - yp_mean,
+            lat_r, lon_r,
+            h_ellipsoid_tide_free  # height_m, meskipun tidak digunakan di fungsi
+        )
+        # Rotasi XYZ -> ENU
+        de_pt = (-sin_l * dX_pt + cos_l * dY_pt) * 1000.0
+        dn_pt = (-sin_p * cos_l * dX_pt - sin_p * sin_l * dY_pt + cos_p * dZ_pt) * 1000.0
+        du_pt = (cos_p * cos_l * dX_pt + cos_p * sin_l * dY_pt + sin_p * dZ_pt) * 1000.0
+
+        # ---- Ocean Pole Tide ----
+        de_opt_m, dn_opt_m, du_opt_m = ocean_pole_tide_loading(
+            lat_r, lon_r,
+            xp_rad - xp_mean,
+            -(yp_rad - yp_mean)
+        )
+        de_opt = de_opt_m * 1000.0
+        dn_opt = dn_opt_m * 1000.0
+        du_opt = du_opt_m * 1000.0
+
+        # ---- Atmospheric Pressure Loading (Ray & Ponte) ----
+        dX_atm, dY_atm, dZ_atm = atm_loading_displacement(
+            ut1_jd, lat_r, lon_r
+        )
+        de_atm = (-sin_l * dX_atm + cos_l * dY_atm) * 1000.0
+        dn_atm = (-sin_p * cos_l * dX_atm - sin_p * sin_l * dY_atm + cos_p * dZ_atm) * 1000.0
+        du_atm = (cos_p * cos_l * dX_atm + cos_p * sin_l * dY_atm + sin_p * dZ_atm) * 1000.0
+
+    else:
+        # Jika tidak ada koordinat, semua tetap nol
+        pass
 
     # ---- 5. STATION DISPLACEMENT (Total Vector for Coordinate Correction) ----
     if use_station_displacement and x_itrf2020_m is not None:
@@ -628,7 +692,7 @@ def generate_advanced_geodetic_report_vsop2013(
     print(f"  {'Vertical Deflection ξ (NS)':<30}: {deflection['xi_arcsec']:+.4f}″")
     print(f"  {'Vertical Deflection η (EW)':<30}: {deflection['eta_arcsec']:+.4f}″")
     print(f"  {'Total Deflection θ':<30}: {deflection['total_theta_arcsec']:.4f}″")
-    print(f"  {'OTL Tilt (NS, EW)':<30}: {otl_tilt_ns_arcsec:+.4f}, {otl_tilt_ew_arcsec:+.4f} arcsec")
+    print(f"  {'OTL Tilt (NS, EW)':<30}: {otl_tilt_ns_arcsec:+.6f}, {otl_tilt_ew_arcsec:+.6f} arcsec")
 
     # [3] LOCAL GEOPHYSICS
     section_header("[3] LOCAL GEOPHYSICS & GRAVITY FIELD")
@@ -688,12 +752,59 @@ def generate_advanced_geodetic_report_vsop2013(
         print(f"      {'Precipitation':<28}: {ecmwf_data.get('precipitation', 0.0):.2f} mm/h")
         print(f"    {'Data Points':<30}: {ecmwf_data['metadata']['data_points']} hourly")
 
-    # [5] SOLID EARTH TIDE
-    section_header("[5] SOLID EARTH TIDE SYNCHRONISATION")
-    print(f"  {'Radial (Up) Displacement':<30}: {du_tide:+.4f} mm")
-    print(f"  {'East Displacement':<30}: {de_tide:+.4f} mm")
-    print(f"  {'North Displacement':<30}: {dn_tide:+.4f} mm")
-    print(f"  {'Total Vector Magnitude':<30}: {total_tide_mm:.4f} mm")
+    # [5] DEFORMATION COMPONENTS (IERS 2010 Conventions)
+    section_header("[5] DEFORMATION COMPONENTS (IERS 2010 Conventions)")
+    
+    # --- Solid Earth Tide ---
+    print(f"\n  {'SOLID EARTH TIDE':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_tide:+.10e} mm")
+    print(f"    {'East':<28}: {de_tide:+.10e} mm")
+    print(f"    {'North':<28}: {dn_tide:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {total_tide_mm:+.10e} mm")
+
+    # --- Ocean Tide Loading (OTL) ---
+    otl_mag = math.hypot(de_otl, math.hypot(dn_otl, du_otl))
+    print(f"\n  {'OCEAN TIDE LOADING (FES2014b)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_otl:+.10e} mm")
+    print(f"    {'East':<28}: {de_otl:+.10e} mm")
+    print(f"    {'North':<28}: {dn_otl:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {otl_mag:+.10e} mm")
+
+    # --- Pole Tide ---
+    pt_mag = math.hypot(de_pt, math.hypot(dn_pt, du_pt))
+    print(f"\n  {'POLE TIDE (Rotational)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_pt:+.10e} mm")
+    print(f"    {'East':<28}: {de_pt:+.10e} mm")
+    print(f"    {'North':<28}: {dn_pt:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {pt_mag:+.10e} mm")
+
+    # --- Ocean Pole Tide ---
+    opt_mag = math.hypot(de_opt, math.hypot(dn_opt, du_opt))
+    print(f"\n  {'OCEAN POLE TIDE':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_opt:+.10e} mm")
+    print(f"    {'East':<28}: {de_opt:+.10e} mm")
+    print(f"    {'North':<28}: {dn_opt:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {opt_mag:+.10e} mm")
+
+    # --- Atmospheric Loading ---
+    atm_mag = math.hypot(de_atm, math.hypot(dn_atm, du_atm))
+    print(f"\n  {'ATMOSPHERIC LOADING (Ray & Ponte)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_atm:+.10e} mm")
+    print(f"    {'East':<28}: {de_atm:+.10e} mm")
+    print(f"    {'North':<28}: {dn_atm:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {atm_mag:+.10e} mm")
+
+    # --- Total Station Displacement ---
+    total_mag_sta = math.hypot(de_sta, math.hypot(dn_sta, du_sta))
+    print(f"\n  {'TOTAL STATION DISPLACEMENT (Sum of all)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_sta:+.10e} mm")
+    print(f"    {'East':<28}: {de_sta:+.10e} mm")
+    print(f"    {'North':<28}: {dn_sta:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {total_mag_sta:+.10e} mm")
+    note_text = "Total = Solid Earth + OTL + Pole Tide + Ocean Pole Tide + ATM"
+    prefix_note = f"  {'Note':<30}: "
+    wrapped_note = textwrap.fill(note_text, width=72, initial_indent=prefix_note, subsequent_indent=" " * len(prefix_note))
+    print(wrapped_note)
 
     # [6] DORIS/IDS PRECISE TIE
     section_header("[6] DORIS/IDS PRECISE GEODETIC TIE (ITRF2020 SINEX)")
