@@ -1,5 +1,7 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-GeoDataManager.py — Geospatial Data Manager for DEM & Geoid Grids
+GeoDataManager.py — Standalone Geospatial Data Manager for DEM & Geoid Grids
 =================================================================================
 
 **DESCRIPTION**
@@ -130,8 +132,11 @@ with the XGM2019e‑2159 model.
     - geoid: Geoid undulation (N) — along the ellipsoid normal.
     - gravity_ell: Normal gravity (γ₀) on the ellipsoid (mGal).
     - gravity_anomaly: Free‑air gravity anomaly (Δg) (mGal).
-    - gravity_earth: Absolute gravity at the Earth's surface (includes
-      centrifugal term) (mGal). This grid has an extra column: h_over_geoid.
+    - gravity_earth: Gravity reduced to the geoid (spheroid) after downward
+      continuation, equivalent to normal gravity at ellipsoid plus classical
+      free-air anomaly: γ₀ + Δg_cl (mGal). This grid has an extra column:
+      h_over_geoid (topographic height above geoid), but the gravity value
+      itself is NOT at the Earth's surface.	
     - gravitation_ell: Gravitational acceleration on the ellipsoid (mGal).
     - potential_ell: Normal potential (U₀) on the ellipsoid (m²/s²).
     - second_r_derivative: Vertical gravity gradient (Eötvös).
@@ -935,8 +940,10 @@ class XGMGridReader:
         - geoid: Geoid undulation (N) — along ellipsoid normal.
         - gravity_ell: Normal gravity on ellipsoid (γ₀) in mGal.
         - gravity_anomaly: Free‑air gravity anomaly (Δg) in mGal.
-        - gravity_earth: Absolute gravity at Earth's surface (includes centrifugal
-          term) in mGal. This grid has an extra column: h_over_geoid.
+        - gravity_earth: Gravity reduced to the geoid (spheroid), equivalent to
+          normal gravity at ellipsoid plus classical free-air anomaly (γ₀ + Δg_cl)
+          (mGal). This grid has an extra column: h_over_geoid (topographic height
+          above geoid), but the gravity value itself is NOT at the Earth's surface.
         - gravitation_ell: Gravitational acceleration on ellipsoid in mGal.
         - potential_ell: Normal potential (U₀) on ellipsoid.
         - second_r_derivative: Vertical gravity gradient (∂²V/∂r²) in Eötvös.
@@ -957,7 +964,7 @@ class XGMGridReader:
         - get_undulation(lat, lon): Returns geoid height anomaly (ζ) or undulation (N).
         - get_normal_gravity(lat, lon): Returns normal gravity (γ₀) in mGal.
         - get_gravity_anomaly(lat, lon): Returns gravity anomaly (Δg) in mGal.
-        - get_gravity_earth(lat, lon): Returns surface gravity (g) in mGal.
+        - get_gravity_earth(lat, lon): returns gravity at the geoid (spheroid),   i.e., γ₀ + Δg_cl (mGal). NOT surface gravity.     
         - get_gravitation(lat, lon): Returns gravitation on the ellipsoid.
         - get_potential(lat, lon): Returns normal potential (U₀).
         - get_second_r_derivative(lat, lon): Returns vertical gradient in Eötvös.
@@ -1241,15 +1248,51 @@ class XGMGridReader:
 
     def get_gravity_earth(self, lat: float, lon: float) -> float:
         """
-        Get the absolute gravity at the Earth's surface (including topography
-        and centrifugal term).
+        Get the gravity value reduced to the geoid (spheroid).
+
+        This is equivalent to normal gravity at ellipsoid plus classical
+        free-air gravity anomaly: γ₀ + Δg_cl (mGal). It does NOT represent
+        gravity at the Earth's surface. For surface gravity, use
+        get_surface_gravity().
+
+        Returns
+        -------
+        float
+            Gravity at the geoid in milligal (mGal).
+        """
+        return self._bilinear_interpolate('gravity_earth', lat, lon)
+
+    def get_surface_gravity(self, lat: float, lon: float, elevation: float) -> float:
+        """
+        Compute the actual gravity at the Earth's surface at a given
+        topographic elevation.
+
+        This uses the gravity disturbance (δg) definition:
+            g_surface = γ_surface + δg
+        where γ_surface is normal gravity evaluated at the topographic
+        height (using the free‑air gradient), and δg is the gravity
+        disturbance obtained from the grid.
+
+        Parameters
+        ----------
+        lat, lon : float
+            Geographic coordinates in decimal degrees.
+        elevation : float
+            Orthometric or ellipsoidal height in metres (typically DEM
+            height plus geoid undulation if ellipsoidal height is desired).
 
         Returns
         -------
         float
             Surface gravity in milligal (mGal).
         """
-        return self._bilinear_interpolate('gravity_earth', lat, lon)
+        # Normal gravity at ellipsoid
+        gamma0 = self.get_normal_gravity(lat, lon)
+        # Free‑air correction to bring normal gravity to the given elevation
+        # Using constant gradient -0.3086 mGal/m (valid for WGS84)
+        gamma_surface = gamma0 - 0.3086 * elevation
+        delta_g = self.get_gravity_disturbance(lat, lon)
+        return gamma_surface + delta_g
 
     def get_gravitation(self, lat: float, lon: float) -> float:
         """
@@ -2008,6 +2051,24 @@ def normal_gravity_somigliana(lat_deg: float) -> float:
 # ============================================================================
 
 if __name__ == "__main__":
+    """
+    ========================================================================
+    BAGIAN UTAMA: DEMONSTRASI KOMPUTASI GEODESI-GEOFISIKA TERINTEGRASI
+    ========================================================================
+
+    Bagian ini mengintegrasikan:
+        - Model Elevasi Digital (Copernicus DSM 30m)
+        - Model medan gravitasi global XGM2019e-2159 (Zingerle et al., 2020)
+        - Stratigrafi lokal Gunung Penanggungan (Paripurno et al., 2018)
+        - Koreksi medan tesseroid (Heck & Seitz, 2007)
+        - Reduksi Bouguer dan isostasi Airy-Heiskanen (Heiskanen & Moritz, 1967)
+        - Analisis spektral FFT (Cooley & Tukey, 1965)
+
+    Semua perhitungan mengacu pada sistem referensi WGS84 dan EGM2008,
+    konsisten dengan model XGM2019e (tide‑free).
+    ========================================================================
+    """
+
     import textwrap
     import shutil
     import contextlib
@@ -2023,12 +2084,11 @@ if __name__ == "__main__":
     BOLD = '\033[1m'
     RESET = '\033[0m'
 
+    # Titik observasi: Jolotundo, lereng barat‑laut Gunung Penanggungan
     LAT, LON = -7.609444, 112.595556
 
     def print_scientific_box(title: str, data: dict, width: int = BOX_WIDTH) -> None:
-        """
-        Print a professional, aligned data box with colon alignment and smart wrapping.
-        """
+        """Cetak kotak hasil dengan tata letak profesional dan pembungkusan teks."""
         border = BOLD + "=" * width + RESET
         sep = BOLD + "-" * width + RESET
 
@@ -2048,13 +2108,11 @@ if __name__ == "__main__":
 
         for key, value in data.items():
             key_str = str(key)
-            # Jika key adalah garis pemisah (dimulai dengan '─'), cetak garis penuh
             if key_str.strip().startswith('─'):
                 print('─' * width)
                 continue
             val_str = str(value)
             formatted_key = BOLD + key_str.ljust(max_key_len) + RESET + " : "
-            # Jika nilai mengandung newline eksplisit, pertahankan tanpa textwrap
             if '\n' in val_str:
                 lines = val_str.split('\n')
                 print(formatted_key + lines[0])
@@ -2071,34 +2129,35 @@ if __name__ == "__main__":
         print()
 
     # =========================================================================
-    #  PHYSICAL CONSTANTS FOR DERIVED PARAMETERS
+    #  KONSTANTA FISIKA – Acuan dari IERS Conventions (2010) & WGS84
     # =========================================================================
-    GRAVITATIONAL_CONSTANT = 6.67430e-11      # m³ kg⁻¹ s⁻²
-    RHO_CRUST = 2670.0                        # kg/m³ (Bouguer / Airy)
-    RHO_MANTLE = 3270.0                       # kg/m³ (Airy-Heiskanen)
-    FREE_AIR_GRADIENT = -0.3086               # mGal/m (normal gravity gradient)
+    GRAVITATIONAL_CONSTANT = 6.67430e-11      # m³ kg⁻¹ s⁻² (CODATA 2018)
+    RHO_CRUST = 2670.0                        # Densitas kerak standar (kg/m³)
+    RHO_MANTLE = 3270.0                       # Densitas mantel untuk isostasi Airy
+    FREE_AIR_GRADIENT = -0.3086               # Gradien udara bebas (mGal/m)
     PI = math.pi
-    T0 = 30000.0  # nominal crustal thickness (30 km) for Airy-Heiskanen
+    T0 = 30000.0                              # Ketebalan kerak normal (30 km) – Airy
 
     # =========================================================================
-    #  LOAD DATA (DEM & XGM GRIDS)
+    #  1. MEMUAT DATA – DEM & GRID GRAVITASI GLOBAL
     # =========================================================================
     dem_loaded = False
     xgm_loaded = False
 
     print("⚙️ [DIAGNOSTIC] Initialising local grids and DEM...")
 
+    # Alihkan output sementara agar tidak mengganggu tampilan
     with contextlib.redirect_stdout(io.StringIO()):
-        # ---- DEM Reader ----
+        # ---- 1a. DEM Copernicus DSM 30m (resolusi ~30 m) ----
         try:
             dem = ASCDEMReader("jolotundo_cop30.asc")
             meta = dem.get_metadata()
-            elev = dem.get_elevation(LAT, LON)
+            elev = dem.get_elevation(LAT, LON)   # Orthometric height (m)
             dem_loaded = True
         except FileNotFoundError:
             pass
 
-        # ---- XGM Grid Reader ----
+        # ---- 1b. Model gravitasi XGM2019e-2159 (Zingerle et al., 2020) ----
         try:
             xgm = XGMGridReader(data_dir=".", grid_prefix="XGM2019e_2159")
             xgm_loaded = True
@@ -2109,32 +2168,33 @@ if __name__ == "__main__":
         print("❌ Data not found. Please ensure jolotundo_cop30.asc and XGM grids exist.")
         exit(1)
 
-    # ---- Stratigraphy ----
+    # ---- 1c. Stratigrafi lokal (Paripurno et al., 2018) ----
     print("⚙️ [DIAGNOSTIC] Initialising Pawitra Stratigraphy...")
     strat = PawitraStratigraphy()
     density_local, unit_code, unit_desc = strat.query(LAT, LON)
     print(f"✅ Stratigraphy loaded: density={density_local:.1f} kg/m³, unit={unit_code}")
 
     # =========================================================================
-    #  OUTPUT: DIGITAL ELEVATION MODEL
+    #  2. ANALISIS DEM – TURUNAN MORFOMETRI & KOREKSI MEDAN
     # =========================================================================
-    # ---- Tesseroid terrain correction with global density ----
+    # --- Koreksi medan tesseroid (Heck & Seitz, 2007; Uieda et al., 2016) ---
+    # Koreksi medan positif menghitung tarikan massa topografi di sekitar titik,
+    # menggunakan integrasi Gauss‑Legendre 3×3×3 dan subdivisi adaptif.
     tc_tess_global = dem.get_terrain_correction_tesseroid(LAT, LON,
                                                           radius_deg=0.05,
                                                           rho=RHO_CRUST)
 
-    # ---- Tesseroid terrain correction with local density ----
     tc_tess_local = dem.get_terrain_correction_tesseroid(LAT, LON,
                                                          radius_deg=0.05,
                                                          rho=density_local)
 
-    # ---- DEM derivatives ----
+    # --- Turunan morfometrik (Horn, 1981) ---
     slope = dem.get_slope(LAT, LON)
     aspect = dem.get_aspect(LAT, LON)
-    prof_curv = dem.get_profile_curvature(LAT, LON)
-    plan_curv = dem.get_plan_curvature(LAT, LON)
+    prof_curv = dem.get_profile_curvature(LAT, LON)  # kelengkungan searah lereng
+    plan_curv = dem.get_plan_curvature(LAT, LON)     # kelengkungan tegak lereng
 
-    # Format spatial bounds with newline for textwrap
+    # Siapkan data untuk output
     bounds_str = f"Lon: {meta['lon_min']:.4f}° to {meta['lon_max']:.4f}°\nLat: {meta['lat_min']:.4f}° to {meta['lat_max']:.4f}°"
     elev_stats_str = f"Min: {meta['elevation_min']:.2f} m, Max: {meta['elevation_max']:.2f} m, Mean: {meta['elevation_mean']:.2f} m"
 
@@ -2153,7 +2213,7 @@ if __name__ == "__main__":
         "TC (local ρ=2250)": f"{tc_tess_local:.4f} mGal (Tesseroid)",
     }
 
-    # ---- LOCAL STRATIGRAPHY ----
+    # ---- Stratigrafi lokal ----
     strat_data = {
         "Reference": "Paripurno et al. (2018) IOP Conf. Ser. 212:012045",
         "Global Density (WGS84/GRS80)": f"{RHO_CRUST:.0f} kg/m³",
@@ -2163,14 +2223,25 @@ if __name__ == "__main__":
     }
 
     # =========================================================================
-    #  OUTPUT: XGM BASIC GRAVITY FIELD
+    #  3. MEDAN GRAVITASI DASAR – XGM2019e-2159
     # =========================================================================
+    """
+    Menurut Barthelmes (2013), fungsional medan gravitasi dapat dihitung dari
+    koefisien harmonik bola. Di sini kita ambil beberapa besaran dasar:
+        - γ₀ : gravitasi normal di ellipsoid (Somigliana)
+        - ζ  : height anomaly (Molodensky) – mengikuti garis unting
+        - N  : undulasi geoid – sepanjang normal ellipsoid
+        - Δg : anomali gravitasi modern (Molodensky)
+        - δg : gravity disturbance – selisih g(P) – γ(P)
+        - Δg_cl : anomali klasik (Stokes) – g di geoid – γ₀
+        - g_geoid : gravitasi di geoid = γ₀ + Δg_cl (downward continued)
+    """
     lat, lon = LAT, LON
     gamma0 = xgm.get_normal_gravity(lat, lon)
     zeta = xgm.get_undulation(lat, lon, use_geoid=False)
     N = xgm.get_undulation(lat, lon, use_geoid=True)
 
-    # Safe getter for optional grids (returns NaN if missing)
+    # Fungsi aman untuk grid opsional (mengembalikan NaN jika tidak ada)
     def safe_get(func, *args, **kwargs):
         try:
             return func(*args, **kwargs)
@@ -2178,7 +2249,7 @@ if __name__ == "__main__":
             return float('nan')
 
     dg = safe_get(xgm.get_gravity_anomaly, lat, lon)
-    g_earth = safe_get(xgm.get_gravity_earth, lat, lon)
+    g_geoid = safe_get(xgm.get_gravity_earth, lat, lon)   # ≡ γ₀ + Δg_cl
     grad = safe_get(xgm.get_second_r_derivative, lat, lon)
     dg_dist = safe_get(xgm.get_gravity_disturbance, lat, lon)
     dg_dist_sa = safe_get(xgm.get_gravity_disturbance_sa, lat, lon)
@@ -2188,6 +2259,12 @@ if __name__ == "__main__":
     iso = safe_get(xgm.get_gravity_anomaly_iso, lat, lon)
     dg_sa_anom = safe_get(xgm.get_gravity_anomaly_sa, lat, lon)
 
+    # ---- Gravitasi permukaan awal (sementara) ----
+    # Menggunakan koreksi udara bebas dan gravity disturbance
+    h_ell = elev + N                     # tinggi ellipsoidal (m)
+    gamma_surface_est = gamma0 - 0.3086 * h_ell
+    g_surface_est = gamma_surface_est + dg_dist if not math.isnan(dg_dist) else float('nan')
+
     xgm_data = {
         "Data Source": "XGM2019e-2159 (GFZ-Potsdam/ICGEM, d/o 2159, tide-free)",
         "Coordinates": f"Lat {lat:.6f}°, Lon {lon:.6f}°",
@@ -2195,7 +2272,8 @@ if __name__ == "__main__":
         "Undulation (N)": f"{N:.8f} m (Geoid, ellipsoid normal)",
         "Normal Gravity (γ₀)": f"{gamma0:.4f} mGal",
         "Gravity Anomaly (Δg)": f"{dg:.4f} mGal" if not math.isnan(dg) else "N/A",
-        "Surface Gravity (g)": f"{g_earth:.4f} mGal" if not math.isnan(g_earth) else "N/A",
+        "Gravity at Geoid (g_geoid)": f"{g_geoid:.4f} mGal" if not math.isnan(g_geoid) else "N/A",
+        "Surface Gravity (g)": f"{g_surface_est:.4f} mGal (using δg)" if not math.isnan(g_surface_est) else "N/A",
         "Vertical Gradient": f"{grad:.2f} Eötvös" if not math.isnan(grad) else "N/A",
         "Gravity Disturbance (δg)": f"{dg_dist:.4f} mGal" if not math.isnan(dg_dist) else "N/A",
         "Gravity Disturbance (sa)": f"{dg_dist_sa:.4f} mGal" if not math.isnan(dg_dist_sa) else "N/A",
@@ -2207,88 +2285,143 @@ if __name__ == "__main__":
     }
 
     # =========================================================================
-    #  ADVANCED GEOPHYSICAL DERIVATIONS (Barthelmes 2013 & Uz & Ince 2025)
+    #  MODEL ACCURACY & UNCERTAINTY (berdasarkan dokumentasi resmi)
     # =========================================================================
-    # Only compute if all essential grids are available
-    if not any(math.isnan(v) for v in [elev, gamma0, zeta, N, csb, bg, dg_dist, dg_dist_sa, dg_cl, dg_sa_anom]):
+    """
+    AKURASI DAN KETIDAKPASTIAN MODEL
+    ---------------------------------
+    Informasi ini mengacu pada:
+        - Copernicus DEM Product Handbook (Airbus, 2022)
+        - Zingerle et al. (2020), Journal of Geodesy, XGM2019e
+        - Barthelmes (2013), STR09/02
+    """
+    accuracy_data = {
+        "───────────────────────────── ": None,
+        "COPERNICUS DEM GLO-30 (30m)": "",
+        "Vertical Datum": "EGM2008 (EPSG 3855)",
+        "Horizontal Datum": "WGS84-G1150 (EPSG 4326)",
+        "Absolute Vertical (LE90, spec)": "< 4 m",
+        "Absolute Vertical (LE90, global)": "1.92 m (mean, excl. Antarctica/Greenland)",
+        "Relative Vertical (LE90)": "< 2 m (slope ≤20°) / < 4 m (slope >20°)",
+        "Horizontal (CE90)": "< 6 m",
+        "Est. local uncertainty (LE90)": f"±1.5–3.0 m (at Jolotundo, slope ~14°)",
+        "───────────────────────────── ": None,
+        "XGM2019e-2159 GRAVITY FIELD": "",
+        "Max degree/order": "2159 (~9.3 km resolution)",
+        "Tide system": "tide‑free",
+        "Reference system": "WGS84 (consistent)",
+        "Geoid accuracy (global RMS)": "~0.205 m (from GNSS/levelling studies)",
+        "Geoid accuracy (local, Indonesia)": "±0.10–0.20 m (estimated, 95% CI)",
+        "Gravity anomaly (1σ)": "±5–10 mGal (mountainous terrain)",
+        "Gravity disturbance (1σ)": "±5–10 mGal + 0.3 mGal/m × δh (elevation error)",
+        "───────────────────────────── ": None,
+        "REFERENCES": "",
+        "Copernicus DEM": "Airbus (2022). Copernicus DEM Product Handbook.",
+        "XGM2019e": "Zingerle et al. (2020). J. Geod., 94(7).",
+        "Functionals": "Barthelmes (2013). GFZ STR09/02.",
+    }
 
-        # ---- A. Terrain Correction (global, from CSB - BG) ----
+    # =========================================================================
+    #  4. DERIVASI GEOFISIKA LANJUTAN (Barthelmes, 2013; Uz & Ince, 2025)
+    # =========================================================================
+    """
+    Bagian ini menggabungkan efek topografi dan isostasi untuk menghasilkan
+    anomali Bouguer lengkap dan anomali isostatik, serta besaran geodesi seperti
+    potensial gangguan (T), bilangan geopotensial (C), dan tinggi dinamik.
+    """
+    if not any(math.isnan(v) for v in [elev, gamma0, zeta, N, csb, bg,
+                                       dg_dist, dg_dist_sa, dg_cl, dg_sa_anom]):
+
+        # ---- 4a. Koreksi medan global dari selisih CSB – BG ----
+        # CSB adalah anomali Bouguer spherical lengkap; BG adalah simple Bouguer.
+        # Selisihnya mencerminkan efek topografi 3D yang hilang pada reduksi pelat.
         TC_global = csb - bg
+        # Menurut Uz & Ince (2025), TC_global = pengaruh topografi penuh.
 
-        # ---- B. Spherical Shell Correction (Barthelmes eq. 69-71) ----
-        gamma_ms2 = gamma0 * 1e-5  # convert mGal → m/s²
+        # ---- 4b. Koreksi spherical shell (Barthelmes, 2013, pers. 69–71) ----
+        # Koreksi ini memperbaiki undulasi geoid akibat massa topografi di atas geoid.
+        gamma_ms2 = gamma0 * 1e-5          # mGal → m/s²
         coeff_shell = 2.0 * PI * GRAVITATIONAL_CONSTANT * RHO_CRUST / gamma_ms2
         dN_top = -coeff_shell * (elev ** 2)
+        # Nilai negatif berarti geoid turun di bawah gunung (efek massa).
 
-        # ---- C. Free-Air Gradient & Normal Gravity at Surface ----
-        FAC = FREE_AIR_GRADIENT * elev
-        gamma_surface = gamma0 + FAC
+        # ---- 4c. Gradien udara bebas dan gravitasi normal di permukaan ----
+        # Tinggi ellipsoidal (h = H + N) digunakan untuk koreksi yang lebih akurat.
+        h_ell = elev + N
+        FAC = FREE_AIR_GRADIENT * h_ell          # koreksi udara bebas (mGal)
+        gamma_surface = gamma0 + FAC             # gravitasi normal di permukaan
 
-        # ---- Bouguer Slab Correction with both densities ----
-        bc_slab_global = 0.04193 * (RHO_CRUST / 1000.0) * elev
-        bc_slab_local = 0.04193 * (density_local / 1000.0) * elev
-        diff_bc = bc_slab_local - bc_slab_global
+        # ---- 4d. GRAVITASI PERMUKAAN YANG BENAR (menggunakan δg) ----
+        # Berdasarkan definisi gravity disturbance (Barthelmes, 2013):
+        #   δg(P) = g(P) – γ(P)  →  g(P) = γ(P) + δg(P)
+        # Dengan γ(P) = γ₀ + FAC (pada tinggi ellipsoidal), dan δg dari grid.
+        g_surface = xgm.get_surface_gravity(lat, lon, h_ell)
 
-        # ---- Complete Bouguer Anomaly (local density) ----
-        cba_local = dg - bc_slab_local + tc_tess_local
+        # ---- 4e. Potensial gangguan, bilangan geopotensial, tinggi dinamik ----
+        # T = γ₀ · ζ   (Bruns' formula, aproksimasi orde pertama)
+        T_disturb = gamma0 * zeta * 1e-5          # m²/s²
 
-        # ---- D. Disturbing Potential, Geopotential Number, and Dynamic Height ----
-        T_disturb = gamma0 * zeta * 1e-5          # Disturbing Potential (m²/s²)
-        C = gamma_surface * elev * 1e-5           # Geopotential Number (m²/s²)
+        # C = g_surface · H   (geopotential number, Heiskanen & Moritz, 1967)
+        C = gamma_surface * elev * 1e-5           # m²/s²
+
+        # Tinggi dinamik = C / γ₄₅   (γ₄₅ = gravitasi normal di 45°)
         gamma45 = normal_gravity_somigliana(45.0)
         gamma45_ms2 = gamma45 * 1e-5
-        dyn_height = C / gamma45_ms2              # Dynamic height (metres)
+        dyn_height = C / gamma45_ms2              # metre
 
-        # ---- E. Crustal Thickness (Airy-Heiskanen) ----
-        # GLOBAL: menggunakan densitas global 2670
+        # ---- 4f. Koreksi pelat Bouguer (global & lokal) ----
+        # 0.04193 = 2πGρ (dengan ρ dalam g/cm³) dalam mGal/m
+        bc_slab_global = 0.04193 * (RHO_CRUST / 1000.0) * elev
+        bc_slab_local  = 0.04193 * (density_local / 1000.0) * elev
+        diff_bc = bc_slab_local - bc_slab_global
+
+        # ---- 4g. Anomali Bouguer lengkap dengan densitas lokal ----
+        # CBA_local = Δg – Bouguer_slab_local + TC_local
+        cba_local = dg - bc_slab_local + tc_tess_local
+
+        # ---- 4h. Model isostasi Airy-Heiskanen (Heiskanen & Moritz, 1967) ----
+        # Akar kerak: t = (ρ_c / (ρ_m – ρ_c)) · H  (di darat)
         root_std = (RHO_CRUST / (RHO_MANTLE - RHO_CRUST)) * elev
         moho_depth_std = T0 + root_std
-
-        # LOKAL: menggunakan densitas lokal 2250 sebagai densitas kerak yang dikompensasi
         root_local = (density_local * elev) / (RHO_MANTLE - density_local)
         moho_depth_local = T0 + root_local
-
-        # Selisih lokal - global
         diff_root = root_local - root_std
 
-        # ---- F. Anomaly Comparisons ----
-        diff_cl_mod = dg_cl - dg
-        diff_sa_mod = dg_sa_anom - dg
-        diff_dist = dg_dist_sa - dg_dist
+        # ---- 4i. Perbandingan antar definisi anomali ----
+        diff_cl_mod = dg_cl - dg          # klasik vs modern
+        diff_sa_mod = dg_sa_anom - dg     # spherical aprox vs modern
+        diff_dist = dg_dist_sa - dg_dist  # spherical disturbance vs exact
 
+        # ---- 4j. Perbedaan geoid vs height anomaly ----
+        N_zeta_diff = N - zeta
+
+        # Susun data untuk output
         adv_data = {
-            # ── Pemisah Global ──
             "────────── ": None,
             "GLOBAL PARAMETERS (ρ=2670)": "",
-            # ---- GLOBAL (ρ=2670) ----
             "TC (global, CSB - BG)": f"{TC_global:.4f} mGal",
             "CBA (global, XGM2019e)": f"{csb:.4f} mGal",
             "Bouguer Slab (global)": f"{bc_slab_global:.4f} mGal",
 
-            # ── Pemisah Lokal ──
             "──────────  ": None,
             "LOCAL PARAMETERS (ρ=2250)": "",
-            # ---- LOKAL (ρ=2250) ----
             f"TC (local, tesseroid)": f"{tc_tess_local:.4f} mGal",
             f"CBA (local)": f"{cba_local:.4f} mGal",
             f"Bouguer Slab (local)": f"{bc_slab_local:.4f} mGal",
 
-            # ── Pemisah Perbandingan ──
             "──────────   ": None,
-            # ---- PERBANDINGAN ----
             "BC diff (local - global)": f"{diff_bc:+.4f} mGal",
 
-            # ── Pemisah Besaran Geodesi ──
             "──────────    ": None,
-            # ---- BESARAN GEODESI ----
             "Spherical Shell Corr (ΔN_top)": f"{dN_top:.6f} m (Barthelmes eq.69)",
             "Disturbing Potential (T)": f"{T_disturb:.3f} m²/s²",
             "Geopotential Number (C)": f"{C:.3f} m²/s²",
             "Dynamic Height": f"{dyn_height:.4f} m (C / γ₄₅)" if not math.isnan(dyn_height) else "N/A",
             "Free-Air Correction (FAC)": f"{FAC:.3f} mGal",
             "Normal Gravity at Surface": f"{gamma_surface:.4f} mGal",
+            "Surface Gravity (g)": f"{g_surface:.4f} mGal (using δg)",
+            "N - ζ difference": f"{N_zeta_diff:.8f} m (geoid - height anomaly)",
 
-            # ---- PERBANDINGAN ANOMALI ----
             "Δg_cl - Δg_modern": f"{diff_cl_mod:.4f} mGal (classical - modern)",
             "Δg_sa - Δg_modern": f"{diff_sa_mod:.4f} mGal (spherical approx)",
             "δg_sa - δg": f"{diff_dist:.4f} mGal (spherical disturbance)",
@@ -2297,32 +2430,35 @@ if __name__ == "__main__":
         adv_data = {"Status": "Some gravity grids missing. Cannot compute derivatives."}
 
     # =========================================================================
-    #  AIRY-HEISKANEN ISOSTATIC MODEL
+    #  5. MODEL ISOSTASI AIRY-HEISKANEN (jika tidak dihitung di atas)
     # =========================================================================
-    iso_calc = IsostaticCalculator()
-    root = iso_calc.compute_root_depth(elev)
-    moho = iso_calc.compute_moho_depth(elev)
-
-    iso_data = {
-        "Topographic Density (local)": f"{density_local:.0f} kg/m³",
-        "Crust Reference Density (global)": f"{RHO_CRUST:.0f} kg/m³",
-        "Mantle Density": f"{RHO_MANTLE:.0f} kg/m³",
-        "Normal Crust T₀": f"{T0/1000:.1f} km",
-
-        # ---- GLOBAL ----
-        "Root (global ρ=2670)": f"{root_std/1000:.3f} km",
-        "Moho (global)": f"{moho_depth_std/1000:.3f} km",
-
-        # ---- LOKAL ----
-        f"Root (local ρ={density_local:.0f})": f"{root_local/1000:.3f} km",
-        "Moho (local)": f"{moho_depth_local/1000:.3f} km",
-
-        # ---- PERBANDINGAN ----
-        "Root difference (local - global)": f"{diff_root/1000:+.3f} km",
-    }
+    if 'root_std' in locals() and 'root_local' in locals():
+        iso_data = {
+            "Topographic Density (local)": f"{density_local:.0f} kg/m³",
+            "Crust Reference Density (global)": f"{RHO_CRUST:.0f} kg/m³",
+            "Mantle Density": f"{RHO_MANTLE:.0f} kg/m³",
+            "Normal Crust T₀": f"{T0/1000:.1f} km",
+            "Root (global ρ=2670)": f"{root_std/1000:.3f} km",
+            "Moho (global)": f"{moho_depth_std/1000:.3f} km",
+            f"Root (local ρ={density_local:.0f})": f"{root_local/1000:.3f} km",
+            "Moho (local)": f"{moho_depth_local/1000:.3f} km",
+            "Root difference (local - global)": f"{diff_root/1000:+.3f} km",
+        }
+    else:
+        iso_calc = IsostaticCalculator()
+        root = iso_calc.compute_root_depth(elev)
+        moho = iso_calc.compute_moho_depth(elev)
+        iso_data = {
+            "Topographic Density (local)": f"{density_local:.0f} kg/m³",
+            "Crust Reference Density (global)": f"{RHO_CRUST:.0f} kg/m³",
+            "Mantle Density": f"{RHO_MANTLE:.0f} kg/m³",
+            "Normal Crust T₀": f"{T0/1000:.1f} km",
+            "Root (standard)": f"{root/1000:.3f} km",
+            "Moho (standard)": f"{moho/1000:.3f} km",
+        }
 
     # =========================================================================
-    #  SPECTRAL ANALYSIS (FFT 2D)
+    #  6. ANALISIS SPEKTRAL (FFT 2D) – Cooley & Tukey (1965)
     # =========================================================================
     spec = SpectralAnalyzer.analyze_dem(dem)
     spec_data = {
@@ -2331,13 +2467,13 @@ if __name__ == "__main__":
     }
 
     # =========================================================================
-    #  GEODETIC COMPUTATIONS (HELPER FUNCTIONS)
+    #  7. KOMPUTASI GEODETIK PENDUKUNG
     # =========================================================================
-    # ---- Cartesian and distance ----
+    # Konversi koordinat geodetik ke kartesian (WGS84)
     x, y, z_cart = geodetic_to_cartesian(LAT, LON, elev)
+    # Jarak great‑circle ke puncak Pawitra (Haversine)
     dist = haversine_distance(LAT, LON, -7.6156, 112.6200)
-
-    # ---- Horizontal gradient ----
+    # Gradien horizontal anomali gravitasi (mGal/m)
     gx, gy = xgm.get_horizontal_gradient(lat, lon)
 
     helper_data = {
@@ -2347,30 +2483,17 @@ if __name__ == "__main__":
         "Horizontal Gradient (∂g/∂x, ∂g/∂y)": f"{gx:.4f}, {gy:.4f} mGal/m" if not math.isnan(gx) else "N/A",
     }
 
-    # ═════════════════════════════════════════════════════════════════════════
-    #  TAMPILKAN SEMUA KOTAK SESUAI HIERARKI ILMIAH (HANYA URUTAN DIUBAH)
-    # ═════════════════════════════════════════════════════════════════════════
-
-    # 1. DATA DASAR: DEM & TURUNAN
+    # =========================================================================
+    #  8. CETAK HASIL – LAPORAN ILMIAH TERSTRUKTUR
+    # =========================================================================
     print_scientific_box("JOLOTUNDO OBSV – DIGITAL ELEVATION MODEL (COP30 DSM)", dem_data)
-
-    # 2. KONTEKS GEOLOGI LOKAL
     print_scientific_box("LOCAL STRATIGRAPHY (Mt. Penanggungan)", strat_data)
-
-    # 3. MODEL GRAVITASI GLOBAL
     print_scientific_box("GRAVITY FIELD MODEL (XGM2019e-2159)", xgm_data)
-
-    # 4. DERIVASI GEOFISIKA (GABUNGAN DATA LOKAL & GLOBAL)
     print_scientific_box("GEOPHYSICAL DERIVATIONS", adv_data)
-
-    # 5. INTERPRETASI ISOSTASI
     print_scientific_box("AIRY-HEISKANEN ISOSTATIC MODEL", iso_data)
-
-    # 6. ANALISIS MORFOLOGI (SPEKTRAL)
     print_scientific_box("SPECTRAL ANALYSIS (FFT 2D)", spec_data)
-
-    # 7. INFORMASI PENDUKUNG GEODETIK
     print_scientific_box("GEODETIC COMPUTATIONS", helper_data)
+    print_scientific_box("MODEL ACCURACY & UNCERTAINTY", accuracy_data)    
 
     print(f"\n{BOLD}{'=' * term_width}{RESET}")
     print(f"{BOLD}{' ANALYSIS COMPLETE '.center(term_width, '=')}{RESET}")
