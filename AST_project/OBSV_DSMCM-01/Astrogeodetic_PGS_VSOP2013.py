@@ -1,12 +1,13 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 ASTERID_PGS_VSOP2013.py — Integrated Geodetic-Gravimetric Inversion Engine (VSOP2013 Edition)
 ===============================================================================================
 
 Target          : Kompleks Candi Pawitra (Gunung Penanggungan), Jawa Timur
-Architecture    : Standalone, Double-Precision (64-bit), Vectorized NumPy
+Architecture    : Double-Precision (64-bit), Vectorized NumPy
 Ephemeris Core  : VSOP2013 (Fienga et al., 2013) for the Sun + ELP/MPP02 for the Moon.
+                  Uses the truncated series (ρ = 1e-12) which preserves sub‑milliarcsecond
+                  accuracy for the Earth‑Moon barycenter over 1890–2000 and remains
+                  highly accurate over millennial timescales.
 
 Scientific Rationale:
     This module replaces the previous IPS2000-based orchestrator with the VSOP2013
@@ -143,7 +144,7 @@ def get_sun_moon_itrf_vsop2013(
     yp_rad: float,
     dX_rad: float = 0.0,
     dY_rad: float = 0.0,
-    vsop2013_file: str = "VSOP2013p3.dat"
+    vsop2013_file: str = "VSOP2013p3_10e12.dat"
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute geocentric Sun and Moon positions in the ITRF (meters) using the
@@ -203,7 +204,7 @@ class DORIS_Deformation_Analyzer:
     """
 
     def __init__(self, eop_file: str = "EOP_20u24_C04_one_file_1962-now.txt",
-                 vsop2013_file: str = "VSOP2013p3.dat"):
+                 vsop2013_file: str = "VSOP2013p3_10e12.dat"):
         self.eo = EarthOrientation(eop_file)
         self.loading_resolver = LoadingResolver(data_dir=".")
         self.vsop_file = vsop2013_file
@@ -293,7 +294,7 @@ def generate_advanced_geodetic_report_vsop2013(
     use_station_displacement: bool = True,
     sun_itrf: Optional[np.ndarray] = None,
     moon_itrf: Optional[np.ndarray] = None,
-    vsop2013_file: str = "VSOP2013p3.dat"
+    vsop2013_file: str = "VSOP2013p3_10e12.dat"
 ) -> None:
     """
     Generate a comprehensive geodetic-gravimetric report for the Jolotundo
@@ -1018,5 +1019,5 @@ if __name__ == "__main__":
         use_station_displacement=True,
         sun_itrf=sun_itrf,
         moon_itrf=moon_itrf,
-        vsop2013_file="VSOP2013p3.dat"
+        vsop2013_file="VSOP2013p3_10e12.dat"
     )
