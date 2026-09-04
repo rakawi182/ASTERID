@@ -17,23 +17,23 @@ Scientific Rationale:
 
 Functional Scope (IERS Conventions 2010 & IAU 2006/2000A):
     1. Absolute Solar & Lunar ephemerides (GCRS, CIRS, ITRS, Topocentric).
-    2. Exact geoidal undulation inversion (Local EGM2008 grids).
+    2. Exact geoidal undulation inversion (Local XGM2019e-2159 grids).
     3. Dynamic vertical deflection (DoV) from local gravimetric inversion.
     4. High‑resolution terrain corrections (Nagy prism + line‑mass).
-    5. 4‑D tropospheric ray‑tracing (GPT3 + VMF3).
+    5. 4‑D tropospheric ray‑tracing (GPT3 + VMF3) with ECMWF real-time data.
     6. Non‑tidal crustal loading (GFZ‑Potsdam harmonic resolver).
     7. Solid Earth tide, Ocean tide loading (FES2014b), Pole tide, and Atmospheric loading.
     8. OTL gravity & tilt corrections (FES2014b, specific to Jolotundo).
     9. ITRF2020 crustal kinematics (Altamimi et al., 2023).
     10. DORIS/IDS precise geodetic tie (ITRF2020 SINEX).
+    11. Real-time atmospheric profile display from ECMWF IFS HRES.
 
 Critical Unit Fix (vs. initial prototype):
     The VSOP2013 orchestrator (SM_VSOP2013.py) returns heliocentric/geocentric states
     in KILOMETERS. However, the CIP‑CIO transformation routines (gcrs_to_itrs_cip)
     and the Solid Earth Tide algorithms strictly require inputs in METERS.
     This module explicitly performs the km → m scaling before any astronomical
-    or geodetic transformation, preventing catastrophic scaling errors (e.g.,
-    fictitious displacements of ~1e9 meters).
+    or geodetic transformation, preventing catastrophic scaling errors.
 
 References:
     [1] Fienga, A., et al. (2013). VSOP2013: A new planetary theory. IMCCE Tech. Note.
@@ -105,6 +105,9 @@ from Site_Geophysic import (
     LoadingResolver,
 )
 
+# ECMWF real‑time module
+import ecmwf_realtime as ecmwf
+
 # ==============================================================================
 # DISPLAY STYLE (aligned with DT18_VSOP2013_Realtime)
 # ==============================================================================
@@ -140,7 +143,7 @@ def get_sun_moon_itrf_vsop2013(
     yp_rad: float,
     dX_rad: float = 0.0,
     dY_rad: float = 0.0,
-    vsop2013_file: str = "VSOP2013p3_10e12.dat"
+    vsop2013_file: str = "VSOP2013p3.dat"
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute geocentric Sun and Moon positions in the ITRF (meters) using the
@@ -157,30 +160,23 @@ def get_sun_moon_itrf_vsop2013(
         ut1_jd (float): Universal Time UT1 as Julian Date.
         xp_rad, yp_rad (float): Polar motion coordinates (radians).
         dX_rad, dY_rad (float): Celestial pole offsets (radians).
-        vsop2013_file (str): Path to the VSOP2013 truncated series file.
+        vsop2013_file (str): Path to the VSOP2013 full series file.
 
     Returns:
         sun_itrf, moon_itrf (np.ndarray): Position vectors in the ITRF (meters).
     """
-    # Initialize the VSOP2013 ephemeris orchestrator.
-    # It automatically loads the VSOP2013 series and ELP/MPP02 lunar series.
     ephem = AstronomicalEphemeris(
         eop_file="EOP_20u24_C04_one_file_1962-now.txt",
         geoid_grid_dir=".",
         vsop_file=vsop2013_file
     )
 
-    # Fetch GCRS positions.
-    # WARNING: These are in KILOMETERS, as SM_VSOP2013 scales AU -> km.
     sun_gcrs_km = ephem.sun_geocentric_gcrs(tt_jd, unit=False)
     moon_gcrs_km = ephem.moon_geocentric_gcrs(tt_jd, unit=False)
 
-    # EXCEPTIONAL UNIT CONVERSION: km -> m.
-    # This prevents the catastrophic ~1e9 factor errors seen in early prototypes.
     sun_gcrs_m = sun_gcrs_km * 1000.0
     moon_gcrs_m = moon_gcrs_km * 1000.0
 
-    # Transform GCRS (meters) to ITRS via the CIP-CIO chain (IERS 2010).
     sun_itrf = gcrs_to_itrs_cip(
         sun_gcrs_m, tt_jd, ut1_jd, xp_rad, yp_rad, dX_rad, dY_rad
     )
@@ -207,7 +203,7 @@ class DORIS_Deformation_Analyzer:
     """
 
     def __init__(self, eop_file: str = "EOP_20u24_C04_one_file_1962-now.txt",
-                 vsop2013_file: str = "VSOP2013p3_10e12.dat"):
+                 vsop2013_file: str = "VSOP2013p3.dat"):
         self.eo = EarthOrientation(eop_file)
         self.loading_resolver = LoadingResolver(data_dir=".")
         self.vsop_file = vsop2013_file
@@ -223,31 +219,33 @@ class DORIS_Deformation_Analyzer:
         dX_rad: float = 0.0, dY_rad: float = 0.0
     ) -> Tuple[float, float, float]:
         """
-        Extract secular (tide-free) coordinates.
-
-        Returns:
-            x_sec, y_sec, z_sec (float): Secular coordinates in the ITRF (meters).
+        Extract secular (tide-free) coordinates from observed ITRF coordinates
+        by removing solid Earth tides, ocean tide loading, pole tide, and
+        non‑tidal atmospheric loading (using ESMGFZ only, not Ray & Ponte).
         """
+        # 1. Compute UT1 from TT
         ut1_jd = self.eo.ut1_jd_from_tt(jd_tt, dut1)
 
-        # Get Sun and Moon positions in ITRF (meters) using VSOP2013.
+        # 2. Get Sun and Moon positions in ITRF (VSOP2013)
         sun_itrf, moon_itrf = get_sun_moon_itrf_vsop2013(
             jd_tt, ut1_jd, xp_rad, yp_rad, dX_rad, dY_rad,
             vsop2013_file=self.vsop_file
         )
 
+        # 3. Observed position vector
         pos_itrf = np.array([x_obs, y_obs, z_obs], dtype=np.float64)
 
-        # Compute total conventional displacement (Solid tide, OTL, Pole tide, ATM).
+        # 4. Station displacement (solid tide, ocean tide, atmospheric tide, pole tide)
         station = StationDisplacement(pos_itrf, blq_data=JOLOTUNDO_FES2014_BLQ)
-        disp_total = station.total_displacement(
-            jd_tt, ut1_jd, xp_rad, yp_rad, sun_itrf, moon_itrf, include_atm=True
+        disp_tidal = station.total_displacement(
+            jd_tt, ut1_jd, xp_rad, yp_rad, sun_itrf, moon_itrf,
+            include_atm=True          # <--- KEMBALIKAN KE TRUE: Ray & Ponte (Tidal) dibutuhkan
         )
 
-        # Resolve non-tidal (hydrological, thermal) loading.
+        # 5. Non‑tidal loading from ESMGFZ (atmosfer, ocean, hidrologi, sea level)
         de_res, dn_res, du_res = self.loading_resolver.resolve_loading_at_mjd(mjd_utc)
 
-        # Rotate loading vector (ENU -> Cartesian).
+        # 6. Convert ENU loading to Cartesian
         lat_r = math.radians(lat_deg)
         lon_r = math.radians(lon_deg)
         sin_lat, cos_lat = math.sin(lat_r), math.cos(lat_r)
@@ -259,15 +257,17 @@ class DORIS_Deformation_Analyzer:
              cos_lat * dn_res + sin_lat * du_res
         ], dtype=np.float64)
 
-        # Subtract all time-dependent deformations to obtain the secular frame.
-        disp_correction = disp_total + disp_nt
+        # 7. Total correction = tidal + non‑tidal
+        disp_correction = disp_tidal + disp_nt
+
+        # 8. Secular position = observed – correction
         pos_sec = pos_itrf - disp_correction
 
         return pos_sec[0], pos_sec[1], pos_sec[2]
 
 
 # ==============================================================================
-# 5. MAIN REPORTING FUNCTION (FULL VSOP2013 PIPELINE)
+# 5. MAIN REPORTING FUNCTION (FULL VSOP2013 PIPELINE with ECMWF Assimilation)
 # ==============================================================================
 def generate_advanced_geodetic_report_vsop2013(
     lat: float,
@@ -293,23 +293,13 @@ def generate_advanced_geodetic_report_vsop2013(
     use_station_displacement: bool = True,
     sun_itrf: Optional[np.ndarray] = None,
     moon_itrf: Optional[np.ndarray] = None,
-    vsop2013_file: str = "VSOP2013p3_10e12.dat"
+    vsop2013_file: str = "VSOP2013p3.dat"
 ) -> None:
     """
     Generate a comprehensive geodetic-gravimetric report for the Jolotundo
     site, fully compliant with the ASTERID pipeline but powered by the
-    VSOP2013 ephemeris for the Sun.
-
-    The report includes:
-        0. GFZ-POTSDAM non-tidal loading resolver.
-        1. Exact height inversion & astro-geodetic deflection (OTL tilt corrected).
-        2. Localised geophysics (gravity, Bouguer, terrain, VGG).
-        3. 4-D tropospheric ray-tracing (GPT3 + VMF3).
-        4. Solid Earth tide synchronization.
-        5. DORIS/IDS precise geodetic tie (ITRF2020 SINEX).
-        6. ITRF2020-PMM plate kinematics & crustal deformation.
-        7. Geodetic diagnostic & uncertainty.
-        8. OTL Gravity & Tilt (FES2014b) — fully integrated.
+    VSOP2013 ephemeris for the Sun. Real-time ECMWF data are assimilated
+    into tropospheric delay computations and displayed in full detail.
 
     All computations strictly follow IERS Conventions 2010 and IAU 2006/2000A.
     """
@@ -332,29 +322,23 @@ def generate_advanced_geodetic_report_vsop2013(
     # ==================================================================
     # OCEAN TIDE LOADING – GRAVITY & TILT (FES2014b)
     # ==================================================================
-    # The OTL engine for gravity and tilt is instantiated separately to
-    # avoid cross-talk with the displacement engine (which uses BLQ).
     otl_grav_engine = Asterid342Engine_FES2014(JOLOTUNDO_FES2014_GRAV_BLQ)
     delta_t_sec = delta_t_from_jd(jd_tt)
 
-    # Compute OTL effects: gravity (nm/s²), EW tilt (nrad), NS tilt (nrad).
+    # CRITICAL: include_equilibrium_long_period=False because Om1/Om2 (zonal, m=0)
+    # do NOT produce measurable gravity or tilt signals at the Earth's surface.
     dg_nm_s2, dtilt_ew_nrad, dtilt_ns_nrad = otl_grav_engine.compute_displacement(
         mjd_tt=jd_tt - 2400000.5,
-        delta_t=delta_t_sec
+        delta_t=delta_t_sec,
+        include_equilibrium_long_period=False  
     )
-
-    # Unit conversions to the report's native system.
-    # 1 mGal = 10^-5 m/s² = 10^4 nm/s².
+    
     otl_gravity_correction_mgal = dg_nm_s2 / 10000.0
-
-    # 1 nrad = 1e-9 rad ; 1 rad = 206264.806247 arcsec.
     RAD_TO_ARCSEC = 206264.80624709636
     otl_tilt_ew_arcsec = dtilt_ew_nrad * 1e-9 * RAD_TO_ARCSEC
     otl_tilt_ns_arcsec = dtilt_ns_nrad * 1e-9 * RAD_TO_ARCSEC
-    # ==================================================================
 
-    # If the calling routine did not provide pre-computed Sun/Moon ITRF
-    # positions, compute them now using the VSOP2013 wrapper.
+    # ---- Sun/Moon ITRF positions ----
     if sun_itrf is None or moon_itrf is None:
         sun_itrf, moon_itrf = get_sun_moon_itrf_vsop2013(
             jd_tt, jd_ut1, xp_rad, yp_rad, dX_rad, dY_rad,
@@ -367,14 +351,12 @@ def generate_advanced_geodetic_report_vsop2013(
 
     # ---- 1. EXACT HEIGHT INVERSION & ASTRO-GEODETIC DEFLECTION ----
     N_undulation = geoid_inv.get_undulation(lat, lon)
-    h_ortho = h_ellipsoid_tide_free - N_undulation
+    h_ortho = h_ellipsoid_tide_free - N_undulation   # Ketinggian ortometrik (MSL)
 
     lat_rad = math.radians(lat)
-    # Mean-tide conversion factor (for reporting only; not used in Bouguer).
     tide_free_correction = -0.198 * (0.5 * (3.0 * math.sin(lat_rad)**2 - 1.0))
     h_mean_tide = h_ellipsoid_tide_free + tide_free_correction
 
-    # Astro-geodetic deflection with OTL tilt injection.
     deflection = geoid_inv.get_astro_geodetic_deflection(
         lat, lon,
         otl_tilt_xi_arcsec=otl_tilt_ns_arcsec,
@@ -385,16 +367,51 @@ def generate_advanced_geodetic_report_vsop2013(
     M, N = geophysics.local_curvature_radii(lat)
     anomalies = geophysics.dynamic_gravity_anomalies(
         lat, lon, h_ortho,
-        otl_gravity_correction_mgal=otl_gravity_correction_mgal
+        otl_gravity_correction_mgal=otl_gravity_correction_mgal,
+        use_grid_g_obs=True
     )
 
     g_mean_mgal = anomalies['g_obs_surface_mgal'] + (anomalies['fac_mgal'] / 2.0)
     geopotential_number = (h_ortho * g_mean_mgal) / 1e6  # kGal·m
 
-    # ---- 3. 4-D TROPOSPHERIC RAY-TRACING (GPT3 + VMF3) ----
+    # ---- ECMWF real-time atmospheric data (full dataset) ----
+    ecmwf_data = None
+    ecmwf_status = {'source': 'GPT3', 'active': False, 'timestamp': None}
+    try:
+        from datetime import datetime, timezone
+        unix_ts = (mjd_utc - 40587.0) * 86400.0
+        utc_time = datetime.fromtimestamp(unix_ts, tz=timezone.utc)
+        ecmwf_data = ecmwf.get_ecmwf_at_point(lat, lon, h_ortho, utc_time)
+
+        # CRITICAL FIX: Only activate if data is valid (not None)
+        if ecmwf_data is not None:
+            ecmwf_status = {
+                'source': 'ECMWF IFS HRES (9 km)',
+                'active': True,
+                'timestamp': utc_time.isoformat(),
+            }
+        else:
+            ecmwf_status['source'] = 'GPT3 climatology'
+            ecmwf_status['active'] = False
+    except Exception:
+        ecmwf_status['source'] = 'GPT3 climatology'
+        ecmwf_status['active'] = False
+
+    # ---- 3. 4-D TROPOSPHERIC RAY-TRACING (GPT3 + VMF3 with ECMWF) ----
     tropo = ray_tracer.compute_tropospheric_slant(
-        mjd_utc, lat, lon, h_ellipsoid_tide_free
+        mjd_utc, lat, lon, h_ellipsoid_tide_free,
+        is_realtime=ecmwf_status['active']
     )
+    
+    # Ambil surface_meteo untuk digunakan di seluruh fungsi
+    met = tropo['surface_meteo']
+
+    # ---- Sinkronisasi status ECMWF dengan hasil aktual ----
+    # Jika perhitungan troposfer menggunakan GPT3, maka kita anggap ECMWF tidak aktif,
+    # sehingga data tambahan tidak ditampilkan.
+    if tropo.get('source') == 'GPT3':
+        ecmwf_status['active'] = False
+        ecmwf_data = None
 
     # ---- 4. SOLID EARTH TIDE SYNCHRONISATION (for diagnostic display) ----
     if x_itrf2020_m is not None and sun_itrf is not None and moon_itrf is not None:
@@ -410,13 +427,73 @@ def generate_advanced_geodetic_report_vsop2013(
         sin_p, cos_p = math.sin(lat_r), math.cos(lat_r)
         sin_l, cos_l = math.sin(lon_r), math.cos(lon_r)
 
-        # Convert Cartesian tidal displacement to ENU (mm).
         de_tide = (-sin_l * dxtide[0] + cos_l * dxtide[1]) * 1000.0
         dn_tide = (-sin_p * cos_l * dxtide[0] - sin_p * sin_l * dxtide[1] + cos_p * dxtide[2]) * 1000.0
         du_tide = (cos_p * cos_l * dxtide[0] + cos_p * sin_l * dxtide[1] + sin_p * dxtide[2]) * 1000.0
         total_tide_mm = math.hypot(du_tide, math.hypot(de_tide, dn_tide))
     else:
         de_tide = dn_tide = du_tide = total_tide_mm = 0.0
+
+    # ======================================================================
+    # 4b. BREAKDOWN PER KOMPONEN DISPLACEMENT (untuk laporan terpisah)
+    # ======================================================================
+    # Inisialisasi default (nol)
+    de_otl = dn_otl = du_otl = 0.0
+    de_pt = dn_pt = du_pt = 0.0
+    de_opt = dn_opt = du_opt = 0.0
+    de_atm = dn_atm = du_atm = 0.0
+
+    if x_itrf2020_m is not None and sun_itrf is not None and moon_itrf is not None:
+        lat_r, lon_r = math.radians(lat), math.radians(lon)
+        sin_p, cos_p = math.sin(lat_r), math.cos(lat_r)
+        sin_l, cos_l = math.sin(lon_r), math.cos(lon_r)
+
+        # ---- Ocean Tide Loading (OTL) ----
+        otl_engine_disp = Asterid342Engine_FES2014(JOLOTUNDO_FES2014_BLQ)
+        dU_otl, dW_otl, dS_otl = otl_engine_disp.compute_displacement(
+            mjd_tt=jd_tt - 2400000.5,
+            delta_t=delta_t_sec,
+            include_equilibrium_long_period=True  # OTL displacement harus menyertakan Om1/Om2
+        )
+        # Konversi dari (Up, West, South) ke ENU
+        de_otl = -dW_otl * 1000.0
+        dn_otl = -dS_otl * 1000.0
+        du_otl = dU_otl * 1000.0
+
+        # ---- Pole Tide (rotational deformation) ----
+        xp_mean, yp_mean = mean_pole_iers2010(jd_tt)
+        dX_pt, dY_pt, dZ_pt = pole_tide(
+            xp_rad - xp_mean,
+            yp_rad - yp_mean,
+            lat_r, lon_r,
+            h_ellipsoid_tide_free  # height_m, meskipun tidak digunakan di fungsi
+        )
+        # Rotasi XYZ -> ENU
+        de_pt = (-sin_l * dX_pt + cos_l * dY_pt) * 1000.0
+        dn_pt = (-sin_p * cos_l * dX_pt - sin_p * sin_l * dY_pt + cos_p * dZ_pt) * 1000.0
+        du_pt = (cos_p * cos_l * dX_pt + cos_p * sin_l * dY_pt + sin_p * dZ_pt) * 1000.0
+
+        # ---- Ocean Pole Tide ----
+        de_opt_m, dn_opt_m, du_opt_m = ocean_pole_tide_loading(
+            lat_r, lon_r,
+            xp_rad - xp_mean,
+            -(yp_rad - yp_mean)
+        )
+        de_opt = de_opt_m * 1000.0
+        dn_opt = dn_opt_m * 1000.0
+        du_opt = du_opt_m * 1000.0
+
+        # ---- Atmospheric Pressure Loading (Ray & Ponte) ----
+        dX_atm, dY_atm, dZ_atm = atm_loading_displacement(
+            ut1_jd, lat_r, lon_r
+        )
+        de_atm = (-sin_l * dX_atm + cos_l * dY_atm) * 1000.0
+        dn_atm = (-sin_p * cos_l * dX_atm - sin_p * sin_l * dY_atm + cos_p * dZ_atm) * 1000.0
+        du_atm = (cos_p * cos_l * dX_atm + cos_p * sin_l * dY_atm + sin_p * dZ_atm) * 1000.0
+
+    else:
+        # Jika tidak ada koordinat, semua tetap nol
+        pass
 
     # ---- 5. STATION DISPLACEMENT (Total Vector for Coordinate Correction) ----
     if use_station_displacement and x_itrf2020_m is not None:
@@ -472,13 +549,11 @@ def generate_advanced_geodetic_report_vsop2013(
             lat_rad_st, lon_rad_st = math.radians(lat), math.radians(lon)
             used_point = "Unknown (no reference station)"
 
-    # Velocities with ORB (Origin Rate Bias).
     vx_orb, vy_orb, vz_orb = plate_kinematics.get_velocity(
         x_sta, y_sta, z_sta,
         lat_rad=lat_rad_st, lon_rad=lon_rad_st,
         apply_orb=True, discard_vertical_orb=True
     )
-    # Velocities without ORB (for comparison).
     vx_no_orb, vy_no_orb, vz_no_orb = plate_kinematics.get_velocity(
         x_sta, y_sta, z_sta,
         lat_rad=lat_rad_st, lon_rad=lon_rad_st,
@@ -488,7 +563,6 @@ def generate_advanced_geodetic_report_vsop2013(
     sin_lat, cos_lat = math.sin(lat_rad_st), math.cos(lat_rad_st)
     sin_lon, cos_lon = math.sin(lon_rad_st), math.cos(lon_rad_st)
 
-    # Transform Cartesian velocities to ENU.
     ve_orb = -vx_orb * sin_lon + vy_orb * cos_lon
     vn_orb = -vx_orb * sin_lat * cos_lon - vy_orb * sin_lat * sin_lon + vz_orb * cos_lat
     vu_orb =  vx_orb * cos_lat * cos_lon + vy_orb * cos_lat * sin_lon + vz_orb * sin_lat
@@ -497,23 +571,19 @@ def generate_advanced_geodetic_report_vsop2013(
     vn_no_orb = -vx_no_orb * sin_lat * cos_lon - vy_no_orb * sin_lat * sin_lon + vz_no_orb * cos_lat
     vu_no_orb =  vx_no_orb * cos_lat * cos_lon + vy_no_orb * cos_lat * sin_lon + vz_no_orb * sin_lat
 
-    # Observed velocities from the reference station.
     ve_obs = -v_obs_x * sin_lon + v_obs_y * cos_lon
     vn_obs = -v_obs_x * sin_lat * cos_lon - v_obs_y * sin_lat * sin_lon + v_obs_z * cos_lat
     vu_obs =  v_obs_x * cos_lat * cos_lon + v_obs_y * cos_lat * sin_lon + v_obs_z * sin_lat
 
-    # Residuals (observed - plate model with ORB).
     res_e = (ve_obs - ve_orb) * 1000.0
     res_n = (vn_obs - vn_orb) * 1000.0
     res_u = (vu_obs - vu_orb) * 1000.0
 
-    # Horizontal resultants and azimuths.
     v_horiz_orb = math.hypot(ve_orb, vn_orb) * 1000.0
     azimuth_orb = math.degrees(math.atan2(ve_orb, vn_orb)) % 360.0
     v_horiz_no_orb = math.hypot(ve_no_orb, vn_no_orb) * 1000.0
     azimuth_no_orb = math.degrees(math.atan2(ve_no_orb, vn_no_orb)) % 360.0
 
-    # 16-point compass bearing
     compass_points = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
                       "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
     compass_bearings = [0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5,
@@ -521,14 +591,62 @@ def generate_advanced_geodetic_report_vsop2013(
     best_idx = min(range(len(compass_bearings)), key=lambda i: min(abs(azimuth_orb - compass_bearings[i]), 360 - abs(azimuth_orb - compass_bearings[i])))
     plate_direction = compass_points[best_idx]
     best_idx_no = min(range(len(compass_bearings)), key=lambda i: min(abs(azimuth_no_orb - compass_bearings[i]), 360 - abs(azimuth_no_orb - compass_bearings[i])))
-    plate_direction_no = compass_points[best_idx_no]     
+    plate_direction_no = compass_points[best_idx_no]
 
-    # ---- 8. GEODETIC DIAGNOSTIC & UNCERTAINTY ----
-    sigma_geoid = 0.010
-    sigma_tropo = 0.005
-    sigma_tide  = 0.002
-    sigma_total = math.sqrt(sigma_geoid**2 + sigma_tropo**2 + sigma_tide**2)
+    # ---- 8. GEODETIC DIAGNOSTIC & UNCERTAINTY (IAG/Standar Profesional) ----
+    # ------------------------------------------------------------
+    # 1. KOMPONEN A PRIORI (Statis, berdasarkan model global)
+    # ------------------------------------------------------------
+    sigma_geoid_apriori = 0.080   # 8 cm (standar IAG untuk XGM2019e-2159 di daerah tropis)
+    sigma_tide_apriori   = 0.003   # 3 mm (akurasi FES2014 untuk vertikal)
 
+    # ------------------------------------------------------------
+    # 2. KOMPONEN A POSTERIORI (Adaptif, dari data aktual)
+    # ------------------------------------------------------------
+    # 2a. Sigma troposfer adaptif berdasarkan RH (dari ECMWF jika ada)
+    if ecmwf_data is not None:
+        rh = ecmwf_data.get('rh_2m', 60.0)
+        if rh > 85:
+            sigma_tropo_aposteriori = 0.035
+        elif rh > 70:
+            sigma_tropo_aposteriori = 0.025
+        elif rh > 50:
+            sigma_tropo_aposteriori = 0.018
+        else:
+            sigma_tropo_aposteriori = 0.012
+    else:
+        sigma_tropo_aposteriori = 0.020  # fallback
+
+    # 2b. Sigma dari variabilitas defleksi vertikal
+    otl_tilt_total = math.hypot(otl_tilt_ns_arcsec, otl_tilt_ew_arcsec)
+    sigma_defleksi = 0.0005 * otl_tilt_total
+    sigma_defleksi = min(0.010, sigma_defleksi)
+
+    # 2c. Sigma dari perbedaan GPT3 vs ECMWF (jika keduanya tersedia)
+    if ecmwf_data is not None and tropo.get('source') == 'ECMWF':
+        p_diff = abs(met['p_hpa'] - ecmwf_data['p'])
+        t_diff = abs(met['t_c'] - ecmwf_data['T'])
+        sigma_model_diff = math.hypot(p_diff * 0.0023, t_diff * 0.0005)
+        sigma_model_diff = min(0.015, sigma_model_diff)
+    else:
+        sigma_model_diff = 0.005
+
+    # ------------------------------------------------------------
+    # 3. KOMBINASI A PRIORI + A POSTERIORI (Root-Sum-Square)
+    # ------------------------------------------------------------
+    sigma_1sigma = math.sqrt(
+        sigma_geoid_apriori**2 +
+        sigma_tide_apriori**2 +
+        sigma_tropo_aposteriori**2 +
+        sigma_defleksi**2 +
+        sigma_model_diff**2
+    )
+    sigma_95 = sigma_1sigma * 1.96
+    bias_max = 0.020  # estimasi bias sistematis
+
+    # ------------------------------------------------------------
+    # 4. DIAGNOSTIK LAINNYA
+    # ------------------------------------------------------------
     azimuth_dev = math.degrees(math.atan2(deflection['eta_arcsec'], deflection['xi_arcsec']))
     if azimuth_dev < 0:
         azimuth_dev += 360.0
@@ -538,11 +656,11 @@ def generate_advanced_geodetic_report_vsop2013(
     material_desc = str(anomalies.get('local_material_description', 'No description'))
 
     # ======================================================================
-    # 9. CETAK LAPORAN DENGAN GAYA BOX-DRAWING (hanya display)
+    # 9. CETAK LAPORAN DENGAN GAYA BOX-DRAWING
     # ======================================================================
     print(f"\n{BOLD}{THICK_SEP}{RESET}")
     print(f"{BOLD}{'ASTERID GEODETIC-GRAVIMETRIC DATUM JOLOTUNDO | MT.PAWITRA'.center(W)}{RESET}")
-    print(f"{BOLD}{'** VSOP2013 EPHEMERIS ENGINE + IERS CONVENTIONS (2010) **'.center(W)}{RESET}")
+    print(f"{BOLD}{'** VSOP2013/ELPMPP02 EPHEMERIS + IERS CONVENTIONS (2010) **'.center(W)}{RESET}")
     print(f"{BOLD}{THICK_SEP}{RESET}")
 
     def section_header(title):
@@ -568,15 +686,15 @@ def generate_advanced_geodetic_report_vsop2013(
 
     # [2] EXACT HEIGHT INVERSION & ASTRO-GEODETIC DEFLECTION
     section_header("[2] HEIGHT INVERSION & ASTRO-GEODETIC DEFLECTION")
-    print(f"  {'EGM2008 Undulation (N)':<30}: {N_undulation:.3f} m (Tide-Free)")
+    print(f"  {'XGM2019e-2159 Undulation (N)':<30}: {N_undulation:.3f} m (Tide-Free)")
     print(f"  {'Derived Orthometric (H)':<30}: {h_ortho:.3f} m")
     print(f"  {'Mean-Tide Ellipsoid':<30}: {h_mean_tide:.3f} m (reference only)")
     print(f"  {'Vertical Deflection ξ (NS)':<30}: {deflection['xi_arcsec']:+.4f}″")
     print(f"  {'Vertical Deflection η (EW)':<30}: {deflection['eta_arcsec']:+.4f}″")
     print(f"  {'Total Deflection θ':<30}: {deflection['total_theta_arcsec']:.4f}″")
-    print(f"  {'OTL Tilt (NS, EW)':<30}: {otl_tilt_ns_arcsec:+.4f}, {otl_tilt_ew_arcsec:+.4f} arcsec")
+    print(f"  {'OTL Tilt (NS, EW)':<30}: {otl_tilt_ns_arcsec:+.6f}, {otl_tilt_ew_arcsec:+.6f} arcsec")
 
-    # [3] LOCALISED GEOPHYSICS
+    # [3] LOCAL GEOPHYSICS
     section_header("[3] LOCAL GEOPHYSICS & GRAVITY FIELD")
     print(f"  {'Density':<30}: {rho_local:.1f} kg/m³  ({unit_code})")
     prefix_awal = f"  {'Material Description':<30}: "
@@ -591,7 +709,7 @@ def generate_advanced_geodetic_report_vsop2013(
     print(f"  {'Meridional Radius (M)':<30}: {M:.3f} m")
     print(f"  {'Prime Vertical Radius (N)':<30}: {N:.3f} m")
     print(f"  {'Normal Gravity γ₀':<30}: {anomalies['gamma_0_mgal']:.4f} mGal")
-    print(f"  {'Free-Air Anomaly (EGM2008)':<30}: {anomalies['delta_g_fa_egm_mgal']:+.4f} mGal")
+    print(f"  {'Free-Air Anomaly (XGM2019e)':<30}: {anomalies['delta_g_fa_egm_mgal']:+.4f} mGal")
     print(f"  {'2nd-Order Free-Air Corr.':<30}: {anomalies['fac_mgal']:+.4f} mGal")
     print(f"  {'Bouguer Slab Corr.':<30}: {anomalies['bc_slab_mgal']:+.4f} mGal (ρ={rho_local:.0f})")
     print(f"  {'DEM Terrain Correction':<30}: {anomalies['terrain_correction_mgal']:+.4f} mGal")
@@ -603,23 +721,90 @@ def generate_advanced_geodetic_report_vsop2013(
     print(f"  {'Total VGG (W_zz)':<30}: {anomalies['total_vgg_eotvos']:.2f} Eötvös")
     print(f"  {'Local Free-Air Gradient':<30}: {anomalies['local_fag_mgal_m']:.5f} mGal/m")
 
-    # [4] TROPOSPHERIC RAY-TRACING
+    # [4] TROPOSPHERIC RAY-TRACING (with ECMWF data and full display)
     section_header("[4] 4-D TROPOSPHERIC RAY-TRACING (GPT3 + VMF3)")
     met = tropo['surface_meteo']
-    print(f"  {'Surface Pressure':<30}: {met['p_hpa']:.1f} hPa")
-    print(f"  {'Surface Temperature':<30}: {met['t_c']:.1f} °C")
-    print(f"  {'Water Vapour Pressure':<30}: {met['e_hpa']:.2f} hPa")
+    print(f"  {'Surface Pressure (GPT3)':<30}: {met['p_hpa']:.1f} hPa")
+    print(f"  {'Surface Temperature (GPT3)':<30}: {met['t_c']:.1f} °C")
+    print(f"  {'Water Vapour Pressure (GPT3)':<30}: {met['e_hpa']:.2f} hPa")
     print(f"  {'Total Refractivity (N)':<30}: {tropo['refractivity']['N_total']:.2f}")
     print(f"  {'Zenith Total Delay (ZTD)':<30}: {tropo['zenith_delays']['ztd_m']:.4f} m")
     print(f"  {'Slant Delay @ 10° elev.':<30}: {tropo['slant_delay_10deg_m']:.4f} m")
     print(f"  {'Slant Delay @ 30° elev.':<30}: {tropo['slant_delay_30deg_m']:.4f} m")
+    print(f"  {'Data Source (troposphere)':<30}: {tropo.get('source', 'GPT3')}")
 
-    # [5] SOLID EARTH TIDE
-    section_header("[5] SOLID EARTH TIDE SYNCHRONISATION")
-    print(f"  {'Radial (Up) Displacement':<30}: {du_tide:+.4f} mm")
-    print(f"  {'East Displacement':<30}: {de_tide:+.4f} mm")
-    print(f"  {'North Displacement':<30}: {dn_tide:+.4f} mm")
-    print(f"  {'Total Vector Magnitude':<30}: {total_tide_mm:.4f} mm")
+    # ---- ECMWF real-time data (full display) ----
+    if ecmwf_data is not None and ecmwf_status['active']:
+        print(f"\n  ECMWF IFS HRES (9 km) Real-Time Atmospheric Profile:")
+        print(f"    {'Model Orography':<30}: {ecmwf_data['h_surface']:.1f} m")
+        print(f"    {'Surface Pressure':<30}: {ecmwf_data['p_surface']:.2f} hPa")
+        print(f"    {'Surface Temperature':<30}: {ecmwf_data['T_surface']:.2f} °C")
+        print(f"    {'Timestamp (UTC)':<30}: {ecmwf_status['timestamp']}")
+        print(f"\n    Extrapolated to Site Elevation ({ecmwf_data['metadata']['target_height_m']:.1f} m):")
+        print(f"      {'Pressure (P)':<28}: {ecmwf_data['p']:.2f} hPa")
+        print(f"      {'Temperature (T)':<28}: {ecmwf_data['T']:.2f} °C")
+        print(f"      {'Dew Point (Td)':<28}: {ecmwf_data['Td']:.2f} °C")
+        print(f"      {'Vapour Pressure (e)':<28}: {ecmwf_data['e']:.2f} hPa")
+        print(f"      {'Relative Humidity (RH)':<28}: {ecmwf_data.get('rh_2m', 0.0):.1f} %")
+        print(f"      {'Cloud Cover':<28}: {ecmwf_data.get('cloud_cover', 0.0):.1f} %")
+        print(f"      {'Wind Speed (10m)':<28}: {ecmwf_data.get('wind_speed_10m', 0.0):.1f} km/h")
+        print(f"      {'Wind Direction':<28}: {ecmwf_data.get('wind_direction_10m', 0.0):.0f}°")
+        print(f"      {'Precipitation':<28}: {ecmwf_data.get('precipitation', 0.0):.2f} mm/h")
+        print(f"    {'Data Points':<30}: {ecmwf_data['metadata']['data_points']} hourly")
+
+    # [5] DEFORMATION COMPONENTS (IERS 2010 Conventions)
+    section_header("[5] DEFORMATION COMPONENTS (IERS 2010 Conventions)")
+    
+    # --- Solid Earth Tide ---
+    print(f"\n  {'SOLID EARTH TIDE':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_tide:+.10e} mm")
+    print(f"    {'East':<28}: {de_tide:+.10e} mm")
+    print(f"    {'North':<28}: {dn_tide:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {total_tide_mm:+.10e} mm")
+
+    # --- Ocean Tide Loading (OTL) ---
+    otl_mag = math.hypot(de_otl, math.hypot(dn_otl, du_otl))
+    print(f"\n  {'OCEAN TIDE LOADING (FES2014b)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_otl:+.10e} mm")
+    print(f"    {'East':<28}: {de_otl:+.10e} mm")
+    print(f"    {'North':<28}: {dn_otl:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {otl_mag:+.10e} mm")
+
+    # --- Pole Tide ---
+    pt_mag = math.hypot(de_pt, math.hypot(dn_pt, du_pt))
+    print(f"\n  {'POLE TIDE (Rotational)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_pt:+.10e} mm")
+    print(f"    {'East':<28}: {de_pt:+.10e} mm")
+    print(f"    {'North':<28}: {dn_pt:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {pt_mag:+.10e} mm")
+
+    # --- Ocean Pole Tide ---
+    opt_mag = math.hypot(de_opt, math.hypot(dn_opt, du_opt))
+    print(f"\n  {'OCEAN POLE TIDE':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_opt:+.10e} mm")
+    print(f"    {'East':<28}: {de_opt:+.10e} mm")
+    print(f"    {'North':<28}: {dn_opt:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {opt_mag:+.10e} mm")
+
+    # --- Atmospheric Loading ---
+    atm_mag = math.hypot(de_atm, math.hypot(dn_atm, du_atm))
+    print(f"\n  {'ATMOSPHERIC LOADING (Ray & Ponte)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_atm:+.10e} mm")
+    print(f"    {'East':<28}: {de_atm:+.10e} mm")
+    print(f"    {'North':<28}: {dn_atm:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {atm_mag:+.10e} mm")
+
+    # --- Total Station Displacement ---
+    total_mag_sta = math.hypot(de_sta, math.hypot(dn_sta, du_sta))
+    print(f"\n  {'TOTAL STATION DISPLACEMENT (Sum of all)':<30}")
+    print(f"    {'Radial (Up)':<28}: {du_sta:+.10e} mm")
+    print(f"    {'East':<28}: {de_sta:+.10e} mm")
+    print(f"    {'North':<28}: {dn_sta:+.10e} mm")
+    print(f"    {'Magnitude':<28}: {total_mag_sta:+.10e} mm")
+    note_text = "Total = Solid Earth + OTL + Pole Tide + Ocean Pole Tide + ATM"
+    prefix_note = f"  {'Note':<30}: "
+    wrapped_note = textwrap.fill(note_text, width=72, initial_indent=prefix_note, subsequent_indent=" " * len(prefix_note))
+    print(wrapped_note)
 
     # [6] DORIS/IDS PRECISE TIE
     section_header("[6] DORIS/IDS PRECISE GEODETIC TIE (ITRF2020 SINEX)")
@@ -639,7 +824,6 @@ def generate_advanced_geodetic_report_vsop2013(
             sigma_baseline = math.hypot(nearest['sigX'], math.hypot(nearest['sigY'], nearest['sigZ']))
             print(f"  {'Baseline (survey-DORIS)':<30}: {baseline/1000:.3f} km ± {sigma_baseline*1000:.2f} mm")
         else:
-            # ids_integrator mungkin None, guard
             if ids_integrator is not None:
                 baseline = ids_integrator._haversine(lat, lon, nearest['lat'], nearest['lon'])
                 print(f"  {'Baseline (approx)':<30}: {baseline/1000:.3f} km")
@@ -654,7 +838,6 @@ def generate_advanced_geodetic_report_vsop2013(
     print(f"  {'Plate Assignment':<30}: {nearest_plate} Plate")
     print(f"  {'Origin Rate Bias (ORB)':<30}: Tx={orb_tx:+.2f}, Ty={orb_ty:+.2f}, Tz={orb_tz:+.2f} mm/yr")
 
-    # Reference Point dengan wrap
     prefix_ref = f"  {'Reference Point':<30}: "
     wrapped_ref = textwrap.fill(
         used_point,
@@ -664,21 +847,18 @@ def generate_advanced_geodetic_report_vsop2013(
     )
     print(wrapped_ref)
 
-    # --- NNR Euler w/ ORB (dipecah per komponen) ---
     prefix_orb = f"  {'NNR Euler w/ ORB':<30}: "
     print(f"{prefix_orb}Ve = {ve_orb*1000:+.2f} mm/yr")
     indent_orb = " " * len(prefix_orb)
     print(f"{indent_orb}Vn = {vn_orb*1000:+.2f} mm/yr")
     print(f"{indent_orb}Vu = {vu_orb*1000:+.2f} mm/yr")
 
-    # --- NNR Euler w/o ORB (dipecah per komponen) ---
     prefix_no_orb = f"  {'NNR Euler w/o ORB':<30}: "
     print(f"{prefix_no_orb}Ve = {ve_no_orb*1000:+.2f} mm/yr")
     indent_no_orb = " " * len(prefix_no_orb)
     print(f"{indent_no_orb}Vn = {vn_no_orb*1000:+.2f} mm/yr")
     print(f"{indent_no_orb}Vu = {vu_no_orb*1000:+.2f} mm/yr")
 
-    # --- hasil horizontal dan deformasi (tetap satu baris, karena pendek) ---
     print(f"  {'Horiz. Resultant (ORB)':<30}: {v_horiz_orb:.2f} mm/yr -> {plate_direction} (Az {azimuth_orb:.1f}°)")
     print(f"  {'Horiz. Resultant (no ORB)':<30}: {v_horiz_no_orb:.2f} mm/yr -> {plate_direction_no} (Az {azimuth_no_orb:.1f}°)")
     print(f"  {'Local Deformation (obs-model)':<30}: dVe={res_e:+.2f}, dVn={res_n:+.2f}, dVu={res_u:+.2f} mm/yr")
@@ -687,12 +867,10 @@ def generate_advanced_geodetic_report_vsop2013(
     # [8] GEODETIC DIAGNOSTIC & UNCERTAINTY
     section_header("[8] GEODETIC DIAGNOSTIC & UNCERTAINTY")
     print(f"  {'Geopotential Number (C)':<30}: {geopotential_number:.4f} kGal·m")
-    print(f"  {'H Uncertainty (95% CL)':<30}: ±{sigma_total:.4f} m")
+    print(f"  {'H Uncertainty (1σ, 68%)':<30}: ±{sigma_1sigma:.4f} m")
+    print(f"  {'H Uncertainty (2σ, 95%)':<30}: ±{sigma_95:.4f} m")
+    print(f"  {'Estimated Systematic Bias':<30}: ±{bias_max:.3f} m (max)")
     print(f"  {'Plumb-line Azimuthal Bias':<30}: {azimuth_dev:.2f}° (Ref. North)")
-
-    print(f"\n{BOLD}{THICK_SEP}{RESET}")
-    print(f"{BOLD}{'REPORT GENERATED SUCCESSFULLY – EXITING.'.center(W)}{RESET}")
-    print(f"{BOLD}{THICK_SEP}{RESET}\n")
 
 
 # ==============================================================================
@@ -805,11 +983,9 @@ if __name__ == "__main__":
                 cos_p * sin_l * disp_total[1] + 
                 sin_p * disp_total[2])
                 
-    h_final_tide_free = H_ELLIPSOID_TIDE_FREE + du_total
+    h_final_tide_free = H_ELLIPSOID_TIDE_FREE - du_total
 
     # ---- Step 5: Obtain Sun & Moon ITRF positions using VSOP2013 ----
-    # The wrapper function get_sun_moon_itrf_vsop2013 already handles
-    # the critical km → m conversion internally.
     sun_itrf, moon_itrf = get_sun_moon_itrf_vsop2013(
         jd_tt, ut1_jd, xp_rad, yp_rad, dX_rad, dY_rad
     )
@@ -842,5 +1018,5 @@ if __name__ == "__main__":
         use_station_displacement=True,
         sun_itrf=sun_itrf,
         moon_itrf=moon_itrf,
-        vsop2013_file="VSOP2013p3_10e12.dat"
+        vsop2013_file="VSOP2013p3.dat"
     )
