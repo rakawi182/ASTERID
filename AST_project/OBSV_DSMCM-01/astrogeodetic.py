@@ -292,22 +292,21 @@ def generate_advanced_geodetic_report_ips(
     geophysics = PawitraGeophysics(local_grids, dem_engine=dem_engine, default_density_kg_m3=density)
     ray_tracer = DynamicRayTracing()
 
-    # ==========================================================================
-    # OCEAN TIDE LOADING – GRAVITY & TILT (FES2014b, konstanta Jolotundo)
-    # ==========================================================================
-    # Engine OTL dengan konstanta gravitasi+tilt (bukan displacement)
+    # ==================================================================
+    # OCEAN TIDE LOADING – GRAVITY & TILT (FES2014b)
+    # ==================================================================
+    # The OTL engine for gravity and tilt is instantiated separately to
+    # avoid cross-talk with the displacement engine (which uses BLQ).
     otl_grav_engine = Asterid342Engine_FES2014(JOLOTUNDO_FES2014_GRAV_BLQ)
-
-    # Hitung delta T = TT – UT1 (dalam detik) untuk konversi MJD(TT) ke MJD(UT)
     delta_t_sec = delta_t_from_jd(jd_tt)
 
-    # Komputasi efek OTL:
-    #   dg_nm_s2      : perubahan gravitasi (nm/s²)
-    #   dtilt_ew_nrad : tilt arah barat–timur (nrad)
-    #   dtilt_ns_nrad : tilt arah utara–selatan (nrad)
+    # Compute OTL effects: gravity (nm/s²), EW tilt (nrad), NS tilt (nrad).
+    # CRITICAL: include_equilibrium_long_period=False because Om1/Om2 (zonal, m=0)
+    # do NOT produce measurable gravity or tilt signals at the Earth's surface.
     dg_nm_s2, dtilt_ew_nrad, dtilt_ns_nrad = otl_grav_engine.compute_displacement(
-        mjd_tt=jd_tt - 2400000.5,   # MJD(TT)
-        delta_t=delta_t_sec
+        mjd_tt=jd_tt - 2400000.5,
+        delta_t=delta_t_sec,
+        include_equilibrium_long_period=False
     )
 
     # Konversi satuan ke sistem yang digunakan dalam laporan
@@ -485,7 +484,7 @@ def generate_advanced_geodetic_report_ips(
     material_desc = str(anomalies.get('local_material_description', 'No description'))
 
     # ======================================================================
-    # PRINT REPORT (EXACTLY AS IN ASTERID_PGS.py + tambahan OTL)
+    # PRINT REPORT
     # ======================================================================
     print("\n" + "=" * 80)
     print("      ASTERID GEODETIC-GRAVIMETRIC DATUM JOLOTUNDO | MT.PAWITRA")
@@ -496,18 +495,25 @@ def generate_advanced_geodetic_report_ips(
     print(f" 📐 Input Tide-Free   : {h_ellipsoid_tide_free:.3f} m")
     print("──────────────────────────────────────────────────────────────────────────────")
 
+    # ------------------------------------------------------------------
+    # Helper untuk bagian header laporan
+    # ------------------------------------------------------------------
+    def section_header(title):
+        """Cetak header bagian dengan garis bawah."""
+        print(f"\n{title}")
+        print("─" * 72)
+
     # 0. GFZ-POTSDAM CRUSTAL LOADING RESOLVER
-    print(" 0. GFZ-POTSDAM CRUSTAL LOADING RESOLVER (Zero Double-Counting Enforced)")
+    section_header("0. GFZ-POTSDAM CRUSTAL LOADING RESOLVER (Zero Double-Counting Enforced)")
     print(f"    • Env. non-tidal loading maintained strictly as transient vectors.")
     print(f"    • Target Epoch MJD            : {mjd_utc:.5f}")
     print(f"    • dE (East-West Displacement) : {de_res_mm:+.4f} mm")
     print(f"    • dN (North-South Displ.)     : {dn_res_mm:+.4f} mm")
     print(f"    • dU (Vertical Load Elastic)  : {du_res_mm:+.4f} mm")
     print(f"    • Resolver Status             : COMPLETED [O(1) Binary Lock]")
-    print("──────────────────────────────────────────────────────────────────────────────")
 
     # 1. EXACT HEIGHT INVERSION & ASTRO-GEODETIC DEFLECTION
-    print(" 1. EXACT HEIGHT INVERSION & ASTRO-GEODETIC DEFLECTION")
+    section_header("1. EXACT HEIGHT INVERSION & ASTRO-GEODETIC DEFLECTION")
     print(f"    • EGM2008 Undulation (N)      : {N_undulation:.3f} m (Tide-Free Native)")
     print(f"    • Derived Orthometric (H)     : {h_ortho:.3f} m")
     print(f"    • Reference Mean-Tide Ellips  : {h_mean_tide:.3f} m (Isolated / Unused for H)")
@@ -517,7 +523,7 @@ def generate_advanced_geodetic_report_ips(
     print(f"    • OTL Tilt Correction (NS,EW) : {otl_tilt_ns_arcsec:+.4f}, {otl_tilt_ew_arcsec:+.4f} arcsec")
 
     # 2. LOCALISED GEOPHYSICS
-    print("\n 2. LOCALISED GEOPHYSICS")
+    section_header("2. LOCALISED GEOPHYSICS")
     print(f"    • {'Density & Unit':<27} : {rho_local:.1f} kg/m³, {unit_code}")
     prefix_awal = f"    • {'Material Description':<27} : "
     spasi_penahan = " " * len(prefix_awal)
@@ -535,7 +541,7 @@ def generate_advanced_geodetic_report_ips(
     print(f"    • 2nd-Order Free-Air Corr.    : {anomalies['fac_mgal']:+.4f} mGal")
     print(f"    • Simple Bouguer Slab Corr.   : {anomalies['bc_slab_mgal']:+.4f} mGal (ρ = {rho_local:.0f} kg/m³)")
     print(f"    • DEM Terrain Correction (TC) : {anomalies['terrain_correction_mgal']:+.4f} mGal")
-    print(f"    • OTL Gravity Correction      : {otl_gravity_correction_mgal:+.4f} mGal (included in g_obs, CBA, RBG)")
+    print(f"    • OTL Gravity Correction      : {otl_gravity_correction_mgal:+.4f} mGal (incl. g_obs, CBA, RBG)")
     print(f"    • Inferred Surface Gravity    : {anomalies['g_obs_surface_mgal']:.4f} mGal")
     print(f"    • Complete Bouguer Anomaly    : {anomalies['complete_bouguer_anomaly_mgal']:+.4f} mGal")
     print(f"    • Bouguer-Reduced Gravity     : {anomalies['reduced_bouguer_gravity_mgal']:.4f} mGal (Surface)")
@@ -544,22 +550,34 @@ def generate_advanced_geodetic_report_ips(
     print(f"    • Local Free-Air Gradient     : {anomalies['local_fag_mgal_m']:.5f} mGal/m")
 
     # 3. TROPOSPHERIC
-    print("\n 3. 4-D TROPOSPHERIC RAY-TRACING (GPT3 + VMF3)")
+    section_header("3. 4-D TROPOSPHERIC RAY-TRACING (GPT3 + VMF3)")
     print(f"    • Surface Meteo Constraints   : {tropo['surface_meteo']['p_hpa']:.1f} hPa | {tropo['surface_meteo']['t_c']:.1f} °C | e: {tropo['surface_meteo']['e_hpa']:.2f} hPa")
     print(f"    • Total Refractivity (N)      : {tropo['refractivity']['N_total']:.2f}")
     print(f"    • Zenith Total Delay (ZTD)    : {tropo['zenith_delays']['ztd_m']:.4f} m")
     print(f"    • 10° Elev. Slant Delay       : {tropo['slant_delay_10deg_m']:.4f} m")
     print(f"    • 30° Elev. Slant Delay       : {tropo['slant_delay_30deg_m']:.4f} m")
 
-    # 4. SOLID EARTH TIDE
-    print("\n 4. SOLID EARTH TIDE SYNCHRONISATION")
-    print(f"    • Radial (Up/Zenith) Disp.    : {du_tide:+.4f} mm")
-    print(f"    • Tangential (East) Disp.     : {de_tide:+.4f} mm")
-    print(f"    • Tangential (North) Disp.    : {dn_tide:+.4f} mm")
-    print(f"    • Total Vector Magnitude      : {total_tide_mm:.4f} mm")
+    # [4] SOLID EARTH TIDE (Partial Component)
+    section_header("[4] SOLID EARTH TIDE SYNCHRONISATION")
+    print(f"  {'Radial (Up) Displacement':<30}: {du_tide:+.4f} mm")
+    print(f"  {'East Displacement':<30}: {de_tide:+.4f} mm")
+    print(f"  {'North Displacement':<30}: {dn_tide:+.4f} mm")
+    print(f"  {'Total Vector Magnitude':<30}: {total_tide_mm:.4f} mm")
+
+    # [4a] TOTAL STATION DISPLACEMENT (IERS 2010 Conventional)
+    section_header("[4a] TOTAL STATION DISPLACEMENT (Solid + OTL + Pole + ATM)")
+    print(f"  {'Total Radial (Up)':<30}: {du_sta:+.4f} mm")
+    print(f"  {'Total East':<30}: {de_sta:+.4f} mm")
+    print(f"  {'Total North':<30}: {dn_sta:+.4f} mm")
+    total_mag = math.hypot(de_sta, math.hypot(dn_sta, du_sta))
+    print(f"  {'Total Vector Magnitude':<30}: {total_mag:+.4f} mm")
+    note_text = "Includes Solid Earth, Ocean Tide Loading, Pole Tide, Ocean Pole Tide, and ATM Loading."
+    prefix_note = f"  {'Note':<30}: "
+    wrapped_note = textwrap.fill(note_text, width=72, initial_indent=prefix_note, subsequent_indent=" " * len(prefix_note))
+    print(wrapped_note)
 
     # 5. DORIS/IDS TIE
-    print("\n 5. DORIS/IDS PRECISE GEODETIC TIE (ITRF2020 SINEX)")
+    section_header("5. DORIS/IDS PRECISE GEODETIC TIE (ITRF2020 SINEX)")
     if nearest is not None:
         print(f"    • Nearest IDS Station    : {nearest['name']} ({nearest['code']})")
         print(f"    • Reference Epoch        : {nearest['epoch']:.3f}")
@@ -584,7 +602,7 @@ def generate_advanced_geodetic_report_ips(
         print("    • Nearest IDS Station    : None found within search radius")
 
     # 6. TECTONIC KINEMATICS
-    print("\n 6. TECTONIC KINEMATICS & CRUSTAL DEFORMATION (ITRF2020-PMM)")
+    section_header("6. TECTONIC KINEMATICS & CRUSTAL DEFORMATION (ITRF2020-PMM)")
     orb_tx, orb_ty, orb_tz = TectonicPlateKinematics._ORB_MM_YR
     label_width = 20
     indent_val = " " * (label_width + 9)
@@ -606,7 +624,7 @@ def generate_advanced_geodetic_report_ips(
     print(f"    • {'Note':<{label_width}} : Vertical ORB discarded (Altamimi 2023)")
 
     # 7. DIAGNOSTIC
-    print("\n 7. GEODETIC DIAGNOSTIC & UNCERTAINTY")
+    section_header("7. GEODETIC DIAGNOSTIC & UNCERTAINTY")
     print(f"    • Geopotential Number (C)     : {geopotential_number:.4f} kGal·m")
     print(f"    • Predicted H Uncertainty     : ±{sigma_total:.4f} m (95% Confidence)")
     print(f"    • Plumb-line Azimuthal Bias   : {azimuth_dev:.2f}° (Ref. North)")
